@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
   country_id: { type: String },
 
   password: { type: String, required: true },
-
+// nn
   referred_by: { type: String },
   MYsponsor_id:{ type: String,required: true },
   other_sponsor_id:{ type: String},
