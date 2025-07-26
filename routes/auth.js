@@ -13,12 +13,18 @@ function generateUsername(fullName) {
 
 // Register Route
 router.post('/register', async (req, res) => {
-  const { full_name, mobile, email, password, sponsor_id, country_id } = req.body;
+
+
+
+  const { full_name, mobile, email, password, referal_id, country_id  } = req.body;
 
   // Basic required field check (without sponsor_id)
   if (!full_name || !mobile || !email || !password || !country_id) {
-    return res.status(400).json({ error: 'Full name, mobile, email, password, and country_id are required' });
+    return res.status(400).json({ error: 'Full name, mobile, email, password, and country_id are required' , data : req.body });
   }
+
+
+  
 
   try {
     // Check for existing mobile/email
@@ -28,10 +34,10 @@ router.post('/register', async (req, res) => {
     // If sponsor_id is provided, verify it
     let sponsorObjectId = null;
     let crt_by=null;
-    if (sponsor_id) {
-      const sponsor = await User.findOne({MYsponsor_id:sponsor_id});
+    if (referal_id) {
+      const sponsor = await User.findOne({MYsponsor_id:referal_id});
       if (!sponsor) return res.status(400).json({ error: 'Invalid sponsor ID' });
-      sponsorObjectId = sponsor_id;
+      sponsorObjectId = referal_id;
       crt_by=sponsor.username;
     }
 
@@ -40,7 +46,7 @@ router.post('/register', async (req, res) => {
     const MYsponsor_id = `${mobile}-${Date.now()}`;
     const hashedPassword = await bcrypt.hash(password, 10);
     const crt_date = new Date();
-console.error(MYsponsor_id);
+    console.error(MYsponsor_id);
     const newUser = new User({
       username,
       full_name,
@@ -57,7 +63,13 @@ console.error(MYsponsor_id);
 
     await newUser.save();
 
-    res.json({ success: true, message: 'User registered successfully', username,MYsponsor_id,username });
+  return  res.json({ success: true, message: 'User registered successfully', username,MYsponsor_id,username });
+
+
+
+
+    // res.json({ success: true, message: 'User registered successfully', username, MYsponsor_id, username });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -65,7 +77,7 @@ console.error(MYsponsor_id);
 });
 
 // Login Route
-router.get('/login', async (req, res) => {
+router.post('/login', async (req, res) => {
   const { username_or_mobile, password } = req.body;
 
   if (!username_or_mobile || !password) {
@@ -77,7 +89,7 @@ router.get('/login', async (req, res) => {
       $or: [{ username: username_or_mobile }, { mobile: username_or_mobile }]
     });
 
-    if (!user) return res.status(401).json({ error: 'User not found' });
+    if (!user) return res.status(401).json({ error: 'User not found' ,  username_or_mobile, password  });
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid password' });
@@ -96,5 +108,43 @@ router.get('/login', async (req, res) => {
     res.status(500).json({ error: 'Server error: ' + err.message });
   }
 });
+
+
+
+// POST /api/forgot-password
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { username_or_mobile, newPassword } = req.body;
+
+    if (!username_or_mobile || !newPassword) {
+      return res.status(400).json({ error: "Missing required fields"  , data: req.body});
+    }
+
+    // Find user by username or mobile
+    const user = await User.findOne({
+      $or: [
+        { username: username_or_mobile },
+        { mobile: username_or_mobile }
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.json({ success: true, message: "Password updated successfully." });
+  } catch (err) {
+    console.error("Forgot Password Error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 
 module.exports = router;

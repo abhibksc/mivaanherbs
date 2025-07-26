@@ -36,6 +36,8 @@ activate_router.get("/allusers", async (req, res) => {
       return {
         username: user.username,
         email: user.email,
+        isVarified_email: false,
+        isVarified_mobile: false,
         mobile: user.mobile,
         country: user.country_id,
         joined_at: user.crt_date,
