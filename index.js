@@ -16,7 +16,8 @@ app.use('/api', activate_router);
 
 // ✅ Connect to MongoDB Atlas using environment variable
 mongoose.connect(process.env.MONGODB_URI, {
-  dbName: 'mivaanherbs', // Optional: change if your DB name is different
+   useNewUrlParser: true,
+  useUnifiedTopology: true,
 })
 .then(() => {
   console.log('✅ MongoDB Atlas connected');
