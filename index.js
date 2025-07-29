@@ -19,13 +19,14 @@ app.use("/api/admin", adminRoutes); //admin authentication
 
 
 // ✅ Connect to MongoDB Atlas using environment variable
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('✅ MongoDB Atlas connected');
-    app.listen(3000, () => {
-      console.log(`🚀 Server running at http://localhost:3000`);
-    });
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-  });
+console.log("🚀 MONGODB_URI:", process.env.MONGODB_URI);
+
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
+
+mongoose.connection.once('open', () => {
+  console.log("✅ Connected to DB:", mongoose.connection.name);
+});
+
