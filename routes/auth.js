@@ -89,19 +89,21 @@ router.post('/login', async (req, res) => {
       $or: [{ username: username_or_mobile }, { mobile: username_or_mobile }]
     });
 
-    if (!user) return res.status(401).json({ error: 'User not found' ,  username_or_mobile, password  });
+    if (!user) return res.status(401).json({ error: 'User not found' ,  username_or_mobile, password  , user });
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid password' });
 
-    const token = jwt.sign({ id: user._id, username: user.username }, "123456789", {
+    const token = jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET, {
       expiresIn: '7d'
     });
 
     res.json({
       success: true,
       message: 'Login successful',
-      token
+      token,
+      userName : user.username,
+      userId : user._id
     });
   } catch (err) {
     console.error(err);

@@ -1,65 +1,22 @@
-const express = require("express");
-const activate_router = express.Router();
-const User = require("../models/auth");
 const { Transaction } = require("../models/Transaction");
+const express = require("express");
+const userRouter = express.Router();
 
-activate_router.get("/allusers", async (req, res) => {
-  try {
-    const users = await User.find(
-      {},
-      {
-        username: 1,
-        email: 1,
-        mobile: 1,
-        country_id: 1,
-        crt_date: 1,
-        is_active: 1,
-        wallet_balance: 1,
-      }
-    ).sort({ crt_date: -1 });
+const bcrypt = require("bcrypt");
+const User = require("../models/auth.js");
 
-    const transactions = await Transaction.find({ status: "Success" });
+// Generate username
+function generateUsername(fullName) {
+  const prefix = fullName
+    .replace(/[^A-Za-z]/g, "")
+    .toLowerCase()
+    .substring(0, 3);
+  const random = Math.floor(1000 + Math.random() * 9000);
+  return prefix + random;
+}
 
-    // Map user_id -> total package
-    const userPackageSums = {};
-    let totalPackageSell = 0;
-
-    transactions.forEach((txn) => {
-      const userId = txn.user_id.toString();
-      const amount = parseFloat(txn.package_amount) || 0;
-
-      userPackageSums[userId] = (userPackageSums[userId] || 0) + amount;
-      totalPackageSell += amount;
-    });
-
-    const userData = users.map((user) => {
-      return {
-        username: user.username,
-        email: user.email,
-        isVarified_email: false,
-        isVarified_mobile: false,
-        mobile: user.mobile,
-        country: user.country_id,
-        joined_at: user.crt_date,
-        active: user.is_active,
-        balance: user.wallet_balance,
-      };
-    });
-
-    // Final response
-    return res.json({
-      total_package_sell: totalPackageSell,
-      withdrawals: 0,
-      data: userData,
-    });
-  } catch (err) {
-    console.error("User list error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-// POST /api/activate
-activate_router.post("/activate", async (req, res) => {
+// Register Route
+userRouter.post("/activate", async (req, res) => {
   try {
     const { username, packageAmount } = req.body;
 
@@ -159,4 +116,4 @@ activate_router.post("/activate", async (req, res) => {
   }
 });
 
-module.exports = activate_router;
+module.exports = userRouter;
