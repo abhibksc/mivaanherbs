@@ -63,7 +63,7 @@ router.post('/register', async (req, res) => {
 
     await newUser.save();
 
-  return  res.json({ success: true, message: 'User registered successfully', username,MYsponsor_id,username });
+  return  res.json({ success: true, message: 'User registered successfully', username : username,MYsponsor_id : MYsponsor_id });
 
 
 
