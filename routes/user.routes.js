@@ -5,7 +5,6 @@ const userRouter = express.Router();
 const bcrypt = require("bcrypt");
 const User = require("../models/auth.js");
 
-
 const { authMiddleware } = require("../middleware/auth.middleware");
 const { checkRole } = require("../middleware/roles.middleware");
 userRouter.use(authMiddleware, checkRole("user")); // Protect entire user route
@@ -198,43 +197,34 @@ userRouter.get(
   }
 );
 
-
-
-// // GET: Get all incomes for a user
-userRouter.get("/getDashboardData",
-
-  async (req, res) => {
+userRouter.get("/dashboard-data", async (req, res) => {
   try {
-    const userId = req.user.id; // assuming JWT middleware attaches user info
+    const userId = req.user.id; // from JWT payload (e.g., req.user = { id, username, role })
+
     const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const totalWithdrawal = await Transaction.aggregate([
+      { $match: { user_id: user._id, status: "Success" } },
+      { $group: { _id: null, total: { $sum: "$package_amount" } } },
+    ]);
 
-    // Fetch additional data
-    const totalWithdrawal = 0; // replace with real logic if you store withdrawals
-    const totalRewards = 0; // if applicable
-    const totalRepurchase = 0; // if applicable
+    const dashboardData = {
+      wallet_balance: user.wallet_balance || 0,
+      direct_sponsor_income: user.direct_sponsor_income || 0,
+      fighter_income: user.fighter_income || 0,
+      matching_income: user.matching_income || 0,
+      total_withdrawal: totalWithdrawal[0]?.total || 0,
+      total_rewards: 1000, // Dummy for now
+      total_repurchase: 700, // Dummy for now
+      total_referrals: user.my_mlm_network?.length || 0,
+    };
 
-    const totalReferrals = user.my_mlm_network.length;
-
-    res.json({
-      wallet_balance: user.wallet_balance,
-      direct_sponsor_income: user.direct_sponsor_income,
-      fighter_income: user.fighter_income,
-      matching_income: user.matching_income,
-      total_withdrawal: totalWithdrawal,
-      total_rewards: totalRewards,
-      total_repurchase: totalRepurchase,
-      total_referrals: totalReferrals,
-    });
-  } catch (error) {
-    console.error("Dashboard error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.json(dashboardData);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Something went wrong" });
   }
-}
-
-
-
-);
+});
 
 module.exports = userRouter;
