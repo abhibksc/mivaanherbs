@@ -227,4 +227,125 @@ userRouter.get("/dashboard-data", async (req, res) => {
   }
 });
 
+
+
+userRouter.get("/getWalletDetails", 
+
+  async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId).select('wallet_balance');
+    const transactions = await Transaction.find({ user_id: userId }).sort({ created_at: -1 });
+
+    res.json({ wallet_balance: user.wallet_balance, transactions });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching wallet details', error });
+  }
+}
+
+
+
+);
+
+
+userRouter.get("/getDirectSponsorIncomeDetails", 
+  async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId).populate({
+      path: 'income_logs.from_user',
+      select: 'username full_name mobile',
+    });
+
+    const directLogs = user.income_logs.filter(log => log.type === 'Direct');
+
+    res.json({
+      total: user.direct_sponsor_income,
+      logs: directLogs,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching direct sponsor income', error });
+  }
+}
+
+
+);
+
+
+userRouter.get("/getFighterIncomeDetails", 
+
+  async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId).populate({
+      path: 'income_logs.from_user',
+      select: 'username full_name mobile',
+    });
+
+    const fighterLogs = user.income_logs.filter(log => log.type === 'Fighter');
+
+    res.json({
+      total: user.fighter_income,
+      logs: fighterLogs,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching fighter income', error });
+  }
+}
+
+
+);
+
+
+userRouter.get("/getMatchingIncomeDetails", 
+  async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId).populate({
+      path: 'income_logs.from_user',
+      select: 'username full_name mobile',
+    });
+
+    const matchingLogs = user.income_logs.filter(log => log.type === 'Matching');
+
+    res.json({
+      total: user.matching_income,
+      logs: matchingLogs,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching matching income', error });
+  }
+}
+);
+
+userRouter.get("/getAllIncomeLogs", 
+
+  async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await User.findById(userId).populate({
+      path: 'income_logs.from_user',
+      select: 'username full_name mobile',
+    });
+
+    res.json({ logs: user.income_logs });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching income logs', error });
+  }
+}
+
+
+);
+
+
+
+
+
+
+
 module.exports = userRouter;
