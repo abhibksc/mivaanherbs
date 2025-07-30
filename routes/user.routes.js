@@ -4,6 +4,7 @@ const userRouter = express.Router();
 
 const bcrypt = require("bcrypt");
 const User = require("../models/auth.js");
+const Transaction = require("../models/Transaction.js");
 
 // Generate username
 function generateUsername(fullName) {
@@ -115,5 +116,121 @@ userRouter.post("/activate", async (req, res) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// GET: Get all incomes for a user
+userRouter.get(
+  "/getProfile",
+
+  async (req, res) => {
+    try {
+      const userId = req.user.id; // assuming you're using auth middleware
+      const user = await User.findById(userId).select("-password -income_logs");
+      res.json(user);
+    } catch (err) {
+      res.status(500).json({ error: "Something went wrong." });
+    }
+  }
+);
+
+// GET: Get all incomes for a user
+userRouter.get(
+  "/getIncome",
+
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await User.findById(userId);
+      const {
+        direct_sponsor_income,
+        fighter_income,
+        matching_income,
+        wallet_balance,
+      } = user;
+
+      res.json({
+        direct_sponsor_income,
+        fighter_income,
+        matching_income,
+        wallet_balance,
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch income." });
+    }
+  }
+);
+
+// GET: Get all incomes for a user
+userRouter.get(
+  "/getTransactions ",
+
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const transactions = await Transaction.find({ user_id: userId }).sort({
+        created_at: -1,
+      });
+      res.json(transactions);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch transactions." });
+    }
+  }
+);
+
+// GET: Get all incomes for a user
+userRouter.get(
+  "/getMyNetwork ",
+
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const user = await User.findById(userId).populate(
+        "my_mlm_network.user_id",
+        "full_name username"
+      );
+      res.json(user.my_mlm_network);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch network." });
+    }
+  }
+);
+
+
+
+// // GET: Get all incomes for a user
+userRouter.get("/getDashboardData",
+
+  async (req, res) => {
+  try {
+    const userId = req.user.id; // assuming JWT middleware attaches user info
+    const user = await User.findById(userId);
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Fetch additional data
+    const totalWithdrawal = 0; // replace with real logic if you store withdrawals
+    const totalRewards = 0; // if applicable
+    const totalRepurchase = 0; // if applicable
+
+    const totalReferrals = user.my_mlm_network.length;
+
+    res.json({
+      wallet_balance: user.wallet_balance,
+      direct_sponsor_income: user.direct_sponsor_income,
+      fighter_income: user.fighter_income,
+      matching_income: user.matching_income,
+      total_withdrawal: totalWithdrawal,
+      total_rewards: totalRewards,
+      total_repurchase: totalRepurchase,
+      total_referrals: totalReferrals,
+    });
+  } catch (error) {
+    console.error("Dashboard error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+
+
+);
 
 module.exports = userRouter;
