@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User =require("../models/auth.js");
+const { loginAdmin } = require('../controllers/admin.controller.js');
 
 // Generate username
 function generateUsername(fullName) {
@@ -77,7 +78,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Login Route
-router.post('/login', async (req, res) => {
+router.post('/user-login', async (req, res) => {
   const { username_or_mobile, password } = req.body;
 
   if (!username_or_mobile || !password) {
@@ -94,16 +95,27 @@ router.post('/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid password' });
 
-    const token = jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET, {
-      expiresIn: '7d'
-    });
+const token = jwt.sign(
+  {
+    id: user._id,
+    username: user.username,
+    role: user.role || "user", // fallback to "user"
+  },
+  process.env.JWT_SECRET,
+  {
+    expiresIn: "7d",
+  }
+);
+
+
 
     res.json({
       success: true,
       message: 'Login successful',
       token,
       userName : user.username,
-      userId : user._id
+      userId : user._id,
+       role: user.role || "user"
     });
   } catch (err) {
     console.error(err);
@@ -147,6 +159,9 @@ router.post("/forgot-password", async (req, res) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+router.post("/admin-login", loginAdmin);
+
 
 
 module.exports = router;

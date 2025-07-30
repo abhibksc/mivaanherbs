@@ -12,10 +12,13 @@ const { authMiddleware } = require("../middleware/auth.middleware");
 const dashboard = require('../controllers/admin.controller');
 const txnCtrl = require('../controllers/admin.controller');
 
-router.post("/login", loginAdmin);
-router.get("/profile", authMiddleware, getAdminProfile);
-router.get('/order',authMiddleware, getAllOrders);
-router.get('/allusers', authMiddleware, async (req, res) => {
+
+const { checkRole } = require("../middleware/roles.middleware");
+router.use(authMiddleware, checkRole("admin")); // Protect entire admin route
+
+router.get("/profile", getAdminProfile);
+router.get('/order', getAllOrders);
+router.get('/allusers', async (req, res) => {
   try {
     const users = await User.find(
       {},
@@ -71,10 +74,8 @@ router.get('/allusers', authMiddleware, async (req, res) => {
   }
 });
 
-
-
 // routes/admin.js
-router.patch('/user/:id/status', authMiddleware, async (req, res) => {
+router.patch('/user/:id/status', async (req, res) => {
   const { id } = req.params;
   const { is_active } = req.body;
 
@@ -98,23 +99,20 @@ router.patch('/user/:id/status', authMiddleware, async (req, res) => {
 });
 
 
-
-
-
-router.get('/total-users', authMiddleware, dashboard.getTotalUsers);
-router.get('/active-users',authMiddleware, dashboard.getActiveUsers);
+router.get('/total-users', dashboard.getTotalUsers);
+router.get('/active-users', dashboard.getActiveUsers);
 router.get('/total-income', dashboard.getTotalIncome);
-router.get('/recent-signups', authMiddleware, dashboard.getRecentSignups);
-router.get('/top-earners', authMiddleware, dashboard.getTopEarners);
-router.get('/income-summary', authMiddleware,  dashboard.getIncomeSummary);
-router.get('/bv-stats', authMiddleware, dashboard.getBusinessVolumeStats);
-router.get('/tree/:userId', authMiddleware, dashboard.getTreeDataForUser); // optional
+router.get('/recent-signups', dashboard.getRecentSignups);
+router.get('/top-earners', dashboard.getTopEarners);
+router.get('/income-summary',  dashboard.getIncomeSummary);
+router.get('/bv-stats',  dashboard.getBusinessVolumeStats);
+router.get('/tree/:userId',  dashboard.getTreeDataForUser); // optional
 
 
-router.get('/allTxn', authMiddleware, txnCtrl.getAllTransactions);
-router.get('/total-volume', authMiddleware, txnCtrl.getTotalTransactionVolume);
-router.get('/recent', authMiddleware, txnCtrl.getRecentTransactions);
-router.get('/stats', authMiddleware, txnCtrl.getTransactionStats);
+router.get('/allTxn',  txnCtrl.getAllTransactions);
+router.get('/total-volume',  txnCtrl.getTotalTransactionVolume);
+router.get('/recent',  txnCtrl.getRecentTransactions);
+router.get('/stats',  txnCtrl.getTransactionStats);
 
 
 

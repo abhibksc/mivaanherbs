@@ -11,11 +11,14 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user.routes');
 const adminRoutes = require("./routes/admin.routes");
 const { authMiddleware } = require("./middleware/auth.middleware");
+const { checkRole } = require("./middleware/roles.middleware");
+
+
 
 
 app.use('/api', authRoutes); //user login or singup or forgot 
-app.use('/api/user', authMiddleware, userRoutes); //user authentication
-app.use("/api/admin", adminRoutes); //admin authentication
+app.use('/api/user', authMiddleware, checkRole("user"), userRoutes); // Only users
+app.use('/api/admin', authMiddleware, checkRole("admin"), adminRoutes); // Only admins
 
 
 // ✅ Connect to MongoDB Atlas using environment variable

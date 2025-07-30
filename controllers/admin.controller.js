@@ -12,6 +12,7 @@ const ADMIN = {
   password: bcrypt.hashSync("admin123", 10), // hashed password
 };
 
+
 const loginAdmin = (req, res) => {
   const { email, password } = req.body;
 
@@ -19,12 +20,28 @@ const loginAdmin = (req, res) => {
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
-  const token = jwt.sign({ email }, process.env.JWT_SECRET, {
-    expiresIn: "1d",
-  });
+  // 🟢 Include role in token payload
+  const token = jwt.sign(
+    {
+      email,
+      role: "admin", // Marking this token as admin
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "1d",
+    }
+  );
 
   res.json({ token });
 };
+
+
+
+
+
+
+
+
 
 const getAdminProfile = (req, res) => {
   res.json({ message: "Welcome, Admin", admin: req.admin });

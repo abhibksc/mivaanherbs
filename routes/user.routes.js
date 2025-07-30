@@ -5,6 +5,11 @@ const userRouter = express.Router();
 const bcrypt = require("bcrypt");
 const User = require("../models/auth.js");
 
+
+const { authMiddleware } = require("../middleware/auth.middleware");
+const { checkRole } = require("../middleware/roles.middleware");
+userRouter.use(authMiddleware, checkRole("user")); // Protect entire user route
+
 // Generate username
 function generateUsername(fullName) {
   const prefix = fullName
