@@ -13,7 +13,7 @@ function generateUsername(fullName) {
 }
 
 // Register Route
-router.post('/register', async (req, res) => {
+router.post('/user-register', async (req, res) => {
 
 
 
