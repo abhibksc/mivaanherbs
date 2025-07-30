@@ -4,7 +4,6 @@ const userRouter = express.Router();
 
 const bcrypt = require("bcrypt");
 const User = require("../models/auth.js");
-const Transaction = require("../models/Transaction.js");
 
 // Generate username
 function generateUsername(fullName) {
