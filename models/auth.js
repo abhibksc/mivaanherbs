@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema({
 // nn
  referred_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 MYsponsor_id: { type: String, required: true },
-other_sponsor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+other_sponsor_id: { type: String, default: null }, 
 
   left_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   right_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

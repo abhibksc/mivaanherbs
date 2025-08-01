@@ -3,6 +3,8 @@
 const User = require("../models/auth");
 const { Transaction } = require("../models/Transaction");
 
+const mongoose = require("mongoose");
+const handleTransactionAbort = require("../utils/handleTransactionError.js"); // adjust path accordingly
 
 
 const express = require("express");
@@ -83,6 +85,122 @@ router.get('/allusers', async (req, res) => {
   } catch (err) {
     console.error("User list error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+router.post("/activate", async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { username } = req.body;
+
+    // 1. Fetch user
+    const user = await User.findOne({ username });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.is_active) return res.status(404).json({ error: "Id Already Activated!" });
+
+
+    // 2. fetch transaction
+
+    const user_transaction = await Transaction.findOne({ user_id: user._id });
+    if (!user_transaction)
+      return res
+        .status(404)
+        .json({
+          error:
+            "No Transaction Found.. Please Purchase any Item then Activate Account",
+        });
+
+    // 2. Activate user
+    user.is_active = true;
+    const packageAmount = user.package;
+    await user.save();
+    const dp = Math.round(packageAmount * 0.8017);
+    const bv = parseFloat((packageAmount * 0.0079).toFixed(2));
+
+    // 3. updat transaction table where user_transaction._id
+    await Transaction.updateOne(
+      { user_id: user._id }, // Filter
+      {
+        $set: {
+          dp,
+          bv,
+          status: "Success",
+        },
+      }
+    );
+
+    // 4. Find sponsor
+    const sponsor = await User.findOne({
+      my_sponsor_id: user.other_sponsor_id,
+    });
+
+    if (sponsor) {
+      let sponsorChanged = false;
+      d;
+      // 6. Direct Income (10%)
+      const directIncome = packageAmount * 0.1;
+      sponsor.wallet_balance += directIncome;
+      sponsor.direct_sponsor_income += directIncome;
+      sponsor.income_logs.push({
+        type: "Direct",
+        amount: directIncome,
+        from_user: user._id,
+      });
+      sponsorChanged = true;
+
+      // 7. Fighter Income (5%)
+      if (sponsor.left_user && sponsor.right_user) {
+        const fighterIncome = packageAmount * 0.05;
+        sponsor.wallet_balance += fighterIncome;
+        sponsor.fighter_income += fighterIncome;
+        sponsor.income_logs.push({
+          type: "Fighter",
+          amount: fighterIncome,
+          from_user: user.other_sponsor_id,
+        });
+        sponsorChanged = true;
+      }
+
+      // 8. Update BV
+      const side =
+        String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
+      sponsor[side] += bv;
+      sponsorChanged = true;
+
+      // 9. Matching Income (30% of min BV)
+      const pairBV = Math.min(sponsor.left_bv, sponsor.right_bv);
+      if (pairBV > 0) {
+        const matchIncome = pairBV * 0.3;
+        sponsor.wallet_balance += matchIncome;
+        sponsor.matching_income += matchIncome;
+        sponsor.left_bv -= pairBV;
+        sponsor.right_bv -= pairBV;
+        sponsor.income_logs.push({
+          type: "Matching",
+          amount: matchIncome,
+          from_user: sponsor._id, // from self
+        });
+        sponsorChanged = true;
+      }
+
+      if (sponsorChanged) await sponsor.save();
+    }
+
+    return res.json({
+      success: true,
+      message: "User activated and incomes distributed",
+    });
+  } catch (err) {
+    console.error("Activation Error:", err);
+    return await handleTransactionAbort(
+      session,
+      res,
+      400,
+      `Activation Error:", ${err}`
+    );
   }
 });
 

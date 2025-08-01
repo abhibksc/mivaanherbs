@@ -1,9 +1,10 @@
 const { Transaction } = require("../models/Transaction");
 const express = require("express");
 const userRouter = express.Router();
-
+const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const User = require("../models/auth.js");
+const handleTransactionAbort = require("../utils/handleTransactionError.js"); // adjust path accordingly
 
 const { authMiddleware } = require("../middleware/auth.middleware");
 const { checkRole } = require("../middleware/roles.middleware");
@@ -19,102 +20,55 @@ function generateUsername(fullName) {
   return prefix + random;
 }
 
-// Register Route
-userRouter.post("/activate", async (req, res) => {
+
+userRouter.post("/purchase-item", async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
     const { username, packageAmount } = req.body;
 
-    // 1. Fetch user
-    const user = await User.findOne({ username });
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    // 2. Activate user
-    user.is_active = true;
-    user.package = packageAmount;
-    await user.save();
-    const dp = Math.round(packageAmount * 0.8017);
-    const bv = parseFloat((packageAmount * 0.0079).toFixed(2));
-
-    // 3. Record transaction
-    await Transaction.create({
-      user_id: user._id,
-      username,
-      package_amount: packageAmount,
-      dp,
-      bv,
-      payment_ref: user._id + "/" + username,
-      status: "Success",
-    });
-
-    // 4. Find sponsor
-    const sponsor = await User.findOne({
-      my_sponsor_id: user.other_sponsor_id,
-    });
-
-
-    if (sponsor) {
-
-      let sponsorChanged = false;
-
-      
-
-      // 6. Direct Income (10%)
-      const directIncome = packageAmount * 0.1;
-      sponsor.wallet_balance += directIncome;
-      sponsor.direct_sponsor_income += directIncome;
-      sponsor.income_logs.push({
-        type: "Direct",
-        amount: directIncome,
-        from_user: user._id,
-      });
-      sponsorChanged = true;
-
-      // 7. Fighter Income (5%)
-      if (sponsor.left_user && sponsor.right_user) {
-        const fighterIncome = packageAmount * 0.05;
-        sponsor.wallet_balance += fighterIncome;
-        sponsor.fighter_income += fighterIncome;
-        sponsor.income_logs.push({
-          type: "Fighter",
-          amount: fighterIncome,
-          from_user: user.other_sponsor_id,
-        });
-        sponsorChanged = true;
+    await session.withTransaction(async () => {
+      // 1. Fetch user
+      const user = await User.findOne({ username }).session(session);
+      if (!user) {
+        throw new Error("User not found");
       }
 
-      // 8. Update BV
-      const side = String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
-      sponsor[side] += bv;
-      sponsorChanged = true;
+      // 2. Activate user
+      user.package = packageAmount;
+      await user.save({ session });
 
-      // 9. Matching Income (30% of min BV)
-      const pairBV = Math.min(sponsor.left_bv, sponsor.right_bv);
-      if (pairBV > 0) {
+      // 3. Record transaction
+      await Transaction.create(
+        [
+          {
+            user_id: user._id,
+            username,
+            package_amount: packageAmount,
+            payment_ref: `${user._id}/${username}`,
+            status: "Pending",
+          },
+        ],
+        { session }
+      );
+    });
 
-        const matchIncome = pairBV * 0.3;
-        sponsor.wallet_balance += matchIncome;
-        sponsor.matching_income += matchIncome;
-        sponsor.left_bv -= pairBV;
-        sponsor.right_bv -= pairBV;
-        sponsor.income_logs.push({
-          type: "Matching",
-          amount: matchIncome,
-          from_user: sponsor._id, // from self
-        });
-        sponsorChanged = true;
-        
-      }
-
-      if (sponsorChanged) await sponsor.save();
-    }
+    session.endSession();
 
     return res.json({
       success: true,
-      message: "User activated and incomes distributed",
+      message: "Item Purchased. Please contact your Admin to activate ID.",
     });
   } catch (err) {
-    console.error("Activation Error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("Purchase Error:", err.message);
+
+    // Use your custom handler
+    return handleTransactionAbort(
+      session,
+      res,
+      500,
+      err.message || "Transaction Failed"
+    );
   }
 });
 
@@ -225,129 +179,121 @@ userRouter.get("/dashboard-data", async (req, res) => {
   }
 });
 
-
-
-userRouter.get("/getWalletDetails", 
+userRouter.get(
+  "/getWalletDetails",
 
   async (req, res) => {
-  try {
-    const userId = req.user.id;
+    try {
+      const userId = req.user.id;
 
-    const user = await User.findById(userId).select('wallet_balance');
-    const transactions = await Transaction.find({ user_id: userId }).sort({ created_at: -1 });
+      const user = await User.findById(userId).select("wallet_balance");
+      const transactions = await Transaction.find({ user_id: userId }).sort({
+        created_at: -1,
+      });
 
-    res.json({ wallet_balance: user.wallet_balance, transactions });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching wallet details', error });
+      res.json({ wallet_balance: user.wallet_balance, transactions });
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching wallet details", error });
+    }
   }
-}
-
-
-
 );
 
-
-userRouter.get("/getDirectSponsorIncomeDetails", 
-  async (req, res) => {
+userRouter.get("/getDirectSponsorIncomeDetails", async (req, res) => {
   try {
     const userId = req.user.id;
 
     const user = await User.findById(userId).populate({
-      path: 'income_logs.from_user',
-      select: 'username full_name mobile',
+      path: "income_logs.from_user",
+      select: "username full_name mobile",
     });
 
-    const directLogs = user.income_logs.filter(log => log.type === 'Direct');
+    const directLogs = user.income_logs.filter((log) => log.type === "Direct");
 
     res.json({
       total: user.direct_sponsor_income,
       logs: directLogs,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching direct sponsor income', error });
+    res
+      .status(500)
+      .json({ message: "Error fetching direct sponsor income", error });
   }
-}
+});
 
-
-);
-
-
-userRouter.get("/getFighterIncomeDetails", 
+userRouter.get(
+  "/getFighterIncomeDetails",
 
   async (req, res) => {
+    try {
+      const userId = req.user.id;
+
+      const user = await User.findById(userId).populate({
+        path: "income_logs.from_user",
+        select: "username full_name mobile",
+      });
+
+      const fighterLogs = user.income_logs.filter(
+        (log) => log.type === "Fighter"
+      );
+
+      res.json({
+        total: user.fighter_income,
+        logs: fighterLogs,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching fighter income", error });
+    }
+  }
+);
+
+userRouter.get("/getMatchingIncomeDetails", async (req, res) => {
   try {
     const userId = req.user.id;
 
     const user = await User.findById(userId).populate({
-      path: 'income_logs.from_user',
-      select: 'username full_name mobile',
+      path: "income_logs.from_user",
+      select: "username full_name mobile",
     });
 
-    const fighterLogs = user.income_logs.filter(log => log.type === 'Fighter');
-
-    res.json({
-      total: user.fighter_income,
-      logs: fighterLogs,
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching fighter income', error });
-  }
-}
-
-
-);
-
-
-userRouter.get("/getMatchingIncomeDetails", 
-  async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const user = await User.findById(userId).populate({
-      path: 'income_logs.from_user',
-      select: 'username full_name mobile',
-    });
-
-    const matchingLogs = user.income_logs.filter(log => log.type === 'Matching');
+    const matchingLogs = user.income_logs.filter(
+      (log) => log.type === "Matching"
+    );
 
     res.json({
       total: user.matching_income,
       logs: matchingLogs,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching matching income', error });
+    res.status(500).json({ message: "Error fetching matching income", error });
   }
-}
-);
+});
 
-userRouter.get("/getAllIncomeLogs", 
+userRouter.get(
+  "/getAllIncomeLogs",
 
   async (req, res) => {
-  try {
-    const userId = req.user.id;
+    try {
+      const userId = req.user.id;
 
-    const user = await User.findById(userId).populate({
-      path: 'income_logs.from_user',
-      select: 'username full_name mobile',
-    });
+      const user = await User.findById(userId).populate({
+        path: "income_logs.from_user",
+        select: "username full_name mobile",
+      });
 
-    res.json({ logs: user.income_logs });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching income logs', error });
+      res.json({ logs: user.income_logs });
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching income logs", error });
+    }
   }
-}
-
-
 );
 
 // Upline and downline hirarcy
 
-// userRouter.get("/getUpline", 
+// userRouter.get("/getUpline",
 
 //   async (req, res) => {
 
 //     const userId = req.user.id;
-
 
 //   try {
 //     const user = await User.findById(userId).populate('upline_path', 'username full_name');
@@ -361,7 +307,6 @@ userRouter.get("/getAllIncomeLogs",
 
 // );
 
-
 // const buildDownline = async(fullName) => {
 //   const prefix = fullName
 //     .replace(/[^A-Za-z]/g, "")
@@ -371,8 +316,7 @@ userRouter.get("/getAllIncomeLogs",
 //   return prefix + random;
 // }
 
-
-// userRouter.get("/getUpline", 
+// userRouter.get("/getUpline",
 
 //   async (userId) => {
 //   const user = await User.findById(userId).select('username full_name left_user right_user');
@@ -391,12 +335,5 @@ userRouter.get("/getAllIncomeLogs",
 // }
 
 // );
-
-
-
-
-
-
-
 
 module.exports = userRouter;

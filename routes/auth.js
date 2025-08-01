@@ -32,15 +32,9 @@ router.post('/user-register', async (req, res) => {
     if(exists)  return await handleTransactionAbort(session, res, 409, 'Email or Mobile already registered');
     
     // If sponsor_id is provided, verify it
-    let sponsorObjectId = null;
-    let referred_by = null;
-    let crt_by=null;
-    const sponsor = await User.findOne({MYsponsor_id:other_sponsor_id});
-     if (!sponsor) return await handleTransactionAbort(session, res, 400, 'Invalid sponsor ID')
-
-    sponsorObjectId = sponsor.MYsponsor_id;
-    referred_by = sponsor._id;
-    crt_by=sponsor.username;
+    const sponsor = await User.findOne({MYsponsor_id : other_sponsor_id});
+     if (!sponsor) return await handleTransactionAbort(session, res, 400, `Invalid sponsor ID + ${other_sponsor_id} + ${sponsor}`)
+     if (sponsor && !sponsor.is_active) return await handleTransactionAbort(session, res, 400, `Sponsor Id is Not Activated yet!!`)
 
     // Create user
     const username = generateUsername(full_name);
@@ -53,13 +47,13 @@ router.post('/user-register', async (req, res) => {
       full_name,
       mobile,
       email,
-       referred_by,
-      other_sponsor_id: sponsorObjectId,
+        referred_by : sponsor._id,
+     other_sponsor_id: sponsor.MYsponsor_id,
       MYsponsor_id,
       country_id,
       password: hashedPassword,
       is_active: false,
-      crt_by,
+      crt_by : sponsor.username,
       crt_date
     });
 
@@ -68,10 +62,10 @@ router.post('/user-register', async (req, res) => {
     // for Sponser person...
 
     if(join_at === "Left"){
-       sponsor.left_user = other_sponsor_id;
+       sponsor.left_user = sponsor._id;
     }
     else if(join_at === "Right"){
-       sponsor.right_user = other_sponsor_id;
+       sponsor.right_user = sponsor._id;
     }
     else{
 return await handleTransactionAbort(session, res, 404, 'join_at missing!!')
@@ -85,11 +79,11 @@ return await handleTransactionAbort(session, res, 404, 'join_at missing!!')
     session.endSession();
     return  res.json({ success: true, message: 'User registered successfully', username : username,MYsponsor_id : MYsponsor_id });
 
-    
+
 
   } catch (err) {
     console.error(err);
-    await handleTransactionAbort(session, res, 500, "Server error: ' + err.message");
+    await handleTransactionAbort(session, res, 500,  `Server error: ' + ${err.message}`);
   }
 });
 
@@ -130,6 +124,7 @@ const token = jwt.sign(
       message: 'Login successful',
       token,
       userName : user.username,
+       MYsponsor_id : user.MYsponsor_id,
       userId : user._id,
        role: user.role || "user"
     });
