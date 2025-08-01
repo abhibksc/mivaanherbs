@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User =require("../models/auth.js");
 const { loginAdmin } = require('../controllers/admin.controller.js');
+const handleTransactionAbort = require('../utils/handleTransactionError'); // adjust path accordingly
 
 // Generate username
 function generateUsername(fullName) {
@@ -15,32 +17,30 @@ function generateUsername(fullName) {
 // Register Route
 router.post('/user-register', async (req, res) => {
 
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-
-  const { full_name, mobile, email, password, referal_id, country_id  } = req.body;
-
+  const { full_name, mobile, email, password, other_sponsor_id, country_id ,join_at } = req.body;
   // Basic required field check (without sponsor_id)
-  if (!full_name || !mobile || !email || !password || !country_id) {
-    return res.status(400).json({ error: 'Full name, mobile, email, password, and country_id are required' , data : req.body });
+  if (!full_name || !mobile || !email || !password || !country_id || !join_at || !other_sponsor_id) {
+     return await handleTransactionAbort(session, res, 400, 'All fields are required');
   }
-
-
-  
 
   try {
     // Check for existing mobile/email
     const exists = await User.findOne({ $or: [{ email }, { mobile }] });
-    if (exists) return res.status(409).json({ error: 'Email or Mobile already registered' });
-
+    if(exists)  return await handleTransactionAbort(session, res, 409, 'Email or Mobile already registered');
+    
     // If sponsor_id is provided, verify it
     let sponsorObjectId = null;
+    let referred_by = null;
     let crt_by=null;
-    if (referal_id) {
-      const sponsor = await User.findOne({MYsponsor_id:referal_id});
-      if (!sponsor) return res.status(400).json({ error: 'Invalid sponsor ID' });
-      sponsorObjectId = referal_id;
-      crt_by=sponsor.username;
-    }
+    const sponsor = await User.findOne({MYsponsor_id:other_sponsor_id});
+     if (!sponsor) return await handleTransactionAbort(session, res, 400, 'Invalid sponsor ID')
+
+    sponsorObjectId = sponsor.MYsponsor_id;
+    referred_by = sponsor._id;
+    crt_by=sponsor.username;
 
     // Create user
     const username = generateUsername(full_name);
@@ -53,6 +53,7 @@ router.post('/user-register', async (req, res) => {
       full_name,
       mobile,
       email,
+       referred_by,
       other_sponsor_id: sponsorObjectId,
       MYsponsor_id,
       country_id,
@@ -64,16 +65,31 @@ router.post('/user-register', async (req, res) => {
 
     await newUser.save();
 
-  return  res.json({ success: true, message: 'User registered successfully', username : username,MYsponsor_id : MYsponsor_id });
+    // for Sponser person...
+
+    if(join_at === "Left"){
+       sponsor.left_user = other_sponsor_id;
+    }
+    else if(join_at === "Right"){
+       sponsor.right_user = other_sponsor_id;
+    }
+    else{
+return await handleTransactionAbort(session, res, 404, 'join_at missing!!')
+    }
 
 
 
 
-    // res.json({ success: true, message: 'User registered successfully', username, MYsponsor_id, username });
+    await sponsor.save();
+    await session.commitTransaction();
+    session.endSession();
+    return  res.json({ success: true, message: 'User registered successfully', username : username,MYsponsor_id : MYsponsor_id });
+
+    
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error: ' + err.message });
+    await handleTransactionAbort(session, res, 500, "Server error: ' + err.message");
   }
 });
 

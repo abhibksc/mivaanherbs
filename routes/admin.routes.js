@@ -20,6 +20,7 @@ router.get("/profile", getAdminProfile);
 router.get('/order', getAllOrders);
 router.get('/allusers', async (req, res) => {
   try {
+    // Fetch users
     const users = await User.find(
       {},
       {
@@ -33,24 +34,34 @@ router.get('/allusers', async (req, res) => {
       }
     ).sort({ crt_date: -1 });
 
-    const transactions = await Transaction.find({ status: "Success" });
+    // Fetch all successful transactions, sorted by creation date
+    const transactions = await Transaction.find({ status: 'Success' }).sort({ created_at: 1 });
 
-    // Map user_id -> total package
+    // Map user_id => [transactions], and first transaction
+    const firstTransactionMap = {};
     const userPackageSums = {};
     let totalPackageSell = 0;
 
-    transactions.forEach((txn) => {
+    for (const txn of transactions) {
       const userId = txn.user_id.toString();
-      const amount = parseFloat(txn.package_amount) || 0;
+      const amount = parseFloat(txn.package_amount?.toString() || '0');
 
+      // Sum all packages
       userPackageSums[userId] = (userPackageSums[userId] || 0) + amount;
       totalPackageSell += amount;
-    });
 
+      // Store the first (oldest) transaction only
+      if (!firstTransactionMap[userId]) {
+        firstTransactionMap[userId] = amount;
+      }
+    }
+
+    // Prepare response data
     const userData = users.map((user) => {
+      const userId = user._id.toString();
       return {
+        userId: userId,
         username: user.username,
-         userId: user._id,
         email: user.email,
         isVarified_email: false,
         isVarified_mobile: false,
@@ -59,15 +70,16 @@ router.get('/allusers', async (req, res) => {
         joined_at: user.crt_date,
         active: user.is_active,
         balance: user.wallet_balance,
+        activated_amount: firstTransactionMap[userId] || 0,
       };
     });
 
-    // Final response
     return res.json({
       total_package_sell: totalPackageSell,
       withdrawals: 0,
       data: userData,
     });
+
   } catch (err) {
     console.error("User list error:", err);
     return res.status(500).json({ error: "Internal Server Error" });

@@ -34,6 +34,7 @@ userRouter.post("/activate", async (req, res) => {
     await user.save();
     const dp = Math.round(packageAmount * 0.8017);
     const bv = parseFloat((packageAmount * 0.0079).toFixed(2));
+
     // 3. Record transaction
     await Transaction.create({
       user_id: user._id,
@@ -49,17 +50,13 @@ userRouter.post("/activate", async (req, res) => {
     const sponsor = await User.findOne({
       my_sponsor_id: user.other_sponsor_id,
     });
+
+
     if (sponsor) {
+
       let sponsorChanged = false;
 
-      // 5. Assign to binary tree
-      if (!sponsor.left_user) {
-        sponsor.left_user = user.other_sponsor_id;
-        sponsorChanged = true;
-      } else if (!sponsor.right_user) {
-        sponsor.right_user = user.other_sponsor_id;
-        sponsorChanged = true;
-      }
+      
 
       // 6. Direct Income (10%)
       const directIncome = packageAmount * 0.1;
@@ -86,14 +83,14 @@ userRouter.post("/activate", async (req, res) => {
       }
 
       // 8. Update BV
-      const side =
-        String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
+      const side = String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
       sponsor[side] += bv;
       sponsorChanged = true;
 
       // 9. Matching Income (30% of min BV)
       const pairBV = Math.min(sponsor.left_bv, sponsor.right_bv);
       if (pairBV > 0) {
+
         const matchIncome = pairBV * 0.3;
         sponsor.wallet_balance += matchIncome;
         sponsor.matching_income += matchIncome;
@@ -105,6 +102,7 @@ userRouter.post("/activate", async (req, res) => {
           from_user: sponsor._id, // from self
         });
         sponsorChanged = true;
+        
       }
 
       if (sponsorChanged) await sponsor.save();
@@ -136,66 +134,66 @@ userRouter.get(
 );
 
 // GET: Get all incomes for a user
-userRouter.get(
-  "/getIncome",
+// userRouter.get(
+//   "/getIncome",
 
-  async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const user = await User.findById(userId);
-      const {
-        direct_sponsor_income,
-        fighter_income,
-        matching_income,
-        wallet_balance,
-      } = user;
+//   async (req, res) => {
+//     try {
+//       const userId = req.user.id;
+//       const user = await User.findById(userId);
+//       const {
+//         direct_sponsor_income,
+//         fighter_income,
+//         matching_income,
+//         wallet_balance,
+//       } = user;
 
-      res.json({
-        direct_sponsor_income,
-        fighter_income,
-        matching_income,
-        wallet_balance,
-      });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch income." });
-    }
-  }
-);
-
-// GET: Get all incomes for a user
-userRouter.get(
-  "/getTransactions ",
-
-  async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const transactions = await Transaction.find({ user_id: userId }).sort({
-        created_at: -1,
-      });
-      res.json(transactions);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch transactions." });
-    }
-  }
-);
+//       res.json({
+//         direct_sponsor_income,
+//         fighter_income,
+//         matching_income,
+//         wallet_balance,
+//       });
+//     } catch (err) {
+//       res.status(500).json({ error: "Failed to fetch income." });
+//     }
+//   }
+// );
 
 // GET: Get all incomes for a user
-userRouter.get(
-  "/getMyNetwork ",
+// userRouter.get(
+//   "/getTransactions ",
 
-  async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const user = await User.findById(userId).populate(
-        "my_mlm_network.user_id",
-        "full_name username"
-      );
-      res.json(user.my_mlm_network);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch network." });
-    }
-  }
-);
+//   async (req, res) => {
+//     try {
+//       const userId = req.user.id;
+//       const transactions = await Transaction.find({ user_id: userId }).sort({
+//         created_at: -1,
+//       });
+//       res.json(transactions);
+//     } catch (err) {
+//       res.status(500).json({ error: "Failed to fetch transactions." });
+//     }
+//   }
+// );
+
+// GET: Get all incomes for a user
+// userRouter.get(
+//   "/getMyNetwork ",
+
+//   async (req, res) => {
+//     try {
+//       const userId = req.user.id;
+//       const user = await User.findById(userId).populate(
+//         "my_mlm_network.user_id",
+//         "full_name username"
+//       );
+//       res.json(user.my_mlm_network);
+//     } catch (err) {
+//       res.status(500).json({ error: "Failed to fetch network." });
+//     }
+//   }
+// );
 
 userRouter.get("/dashboard-data", async (req, res) => {
   try {
@@ -341,6 +339,59 @@ userRouter.get("/getAllIncomeLogs",
 
 
 );
+
+// Upline and downline hirarcy
+
+// userRouter.get("/getUpline", 
+
+//   async (req, res) => {
+
+//     const userId = req.user.id;
+
+
+//   try {
+//     const user = await User.findById(userId).populate('upline_path', 'username full_name');
+//     if (!user) return res.status(404).json({ message: 'User not found' });
+
+//     res.json({ upline: user.upline_path });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// }
+
+// );
+
+
+// const buildDownline = async(fullName) => {
+//   const prefix = fullName
+//     .replace(/[^A-Za-z]/g, "")
+//     .toLowerCase()
+//     .substring(0, 3);
+//   const random = Math.floor(1000 + Math.random() * 9000);
+//   return prefix + random;
+// }
+
+
+// userRouter.get("/getUpline", 
+
+//   async (userId) => {
+//   const user = await User.findById(userId).select('username full_name left_user right_user');
+//   if (!user) return null;
+
+//   const left = user.left_user ? await buildDownline(user.left_user) : null;
+//   const right = user.right_user ? await buildDownline(user.right_user) : null;
+
+//   return {
+//     _id: user._id,
+//     username: user.username,
+//     full_name: user.full_name,
+//     left_user: left,
+//     right_user: right
+//   };
+// }
+
+// );
+
 
 
 

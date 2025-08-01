@@ -26,9 +26,10 @@ const userSchema = new mongoose.Schema({
 
   password: { type: String, required: true },
 // nn
-  referred_by: { type: String },
-  MYsponsor_id:{ type: String,required: true },
-  other_sponsor_id:{ type: String},
+ referred_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+MYsponsor_id: { type: String, required: true },
+other_sponsor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
   left_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   right_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
