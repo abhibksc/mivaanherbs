@@ -73,8 +73,7 @@ userRouter.post("/purchase-item", async (req, res) => {
 });
 
 // GET: Get all incomes for a user
-userRouter.get(
-  "/getProfile",
+userRouter.get("/getProfile",
 
   async (req, res) => {
     try {
@@ -86,6 +85,77 @@ userRouter.get(
     }
   }
 );
+
+
+userRouter.get("/myteam",
+
+ async (req, res) => {
+  try {
+    const userId = req.user._id; // Assuming auth middleware sets req.user
+
+    // Get all users who have this user in their upline_path
+    const downlineUsers = await User.find({ upline_path: userId })
+      .select('full_name username mobile email is_active package referred_by crt_date')
+      .populate('referred_by', 'full_name username');
+
+    res.json({
+      status: true,
+      data: downlineUsers,
+    });
+  } catch (err) {
+    console.error("MyTeam Error:", err);
+    res.status(500).json({ status: false, message: "Server error" });
+  }
+}
+
+
+);
+
+
+
+const buildTree = async (userId) => {
+  const user = await User.findById(userId)
+    .select('username full_name left_user right_user package is_active')
+    .lean();
+
+  if (!user) return null;
+
+  const left = user.left_user ? await buildTree(user.left_user) : null;
+  const right = user.right_user ? await buildTree(user.right_user) : null;
+
+  return {
+    _id: user._id,
+    username: user.username,
+    full_name: user.full_name,
+    package: user.package,
+    is_active: user.is_active,
+    left,
+    right,
+  };
+};
+
+
+
+userRouter.get('/mygeology', async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const tree = await buildTree(userId);
+
+    res.json({
+      status: true,
+      tree,
+    });
+  } catch (err) {
+    console.error("MyGeology Error:", err);
+    res.status(500).json({ status: false, message: "Failed to build genealogy" });
+  }
+});
+
+
+
+
+
 
 // GET: Get all incomes for a user
 // userRouter.get(
