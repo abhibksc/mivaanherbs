@@ -210,9 +210,6 @@ router.post("/activate", async (req, res) => {
 
 
 
-// @route   POST /api/admin/generate-pincode
-// @desc    Create pincode for a user
-// @access  Private (Admin)
 router.post("/generate-pincode", async (req, res) => {
   const { username, pincode, status } = req.body;
 
@@ -237,8 +234,17 @@ router.post("/generate-pincode", async (req, res) => {
   }
 });
 
-module.exports = router;
 
+// Get all pincodes
+router.get("/pincodes", async (req, res) => {
+  try {
+    const pincodes = await Pincode.find().sort({ createdAt: -1 }); // Optional: Sort by latest
+    res.status(200).json({ success: true, data: pincodes });
+  } catch (error) {
+    console.error("Error fetching pincodes:", error);
+    res.status(500).json({ success: false, message: "Server error while fetching pincodes" });
+  }
+});
 
 
 
