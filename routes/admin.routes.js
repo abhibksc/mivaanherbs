@@ -7,6 +7,9 @@ const mongoose = require("mongoose");
 const handleTransactionAbort = require("../utils/handleTransactionError.js"); // adjust path accordingly
 
 
+const Pincode = require("../models/PincodeSchema.js");
+
+
 const express = require("express");
 const router = express.Router();
 const { loginAdmin, getAdminProfile ,getAllOrders} = require("../controllers/admin.controller");
@@ -203,6 +206,46 @@ router.post("/activate", async (req, res) => {
     );
   }
 });
+
+
+
+
+// @route   POST /api/admin/generate-pincode
+// @desc    Create pincode for a user
+// @access  Private (Admin)
+router.post("/generate-pincode", async (req, res) => {
+  const { username, pincode, status } = req.body;
+
+  if (!username || !pincode) {
+    return res.status(400).json({ message: "Username and pincode are required" });
+  }
+
+  try {
+    const existing = await Pincode.findOne({ pincode });
+
+    if (existing) {
+      return res.status(409).json({ message: "Pincode already exists" });
+    }
+
+    const newPincode = new Pincode({ username, pincode, status });
+    await newPincode.save();
+
+    res.status(201).json({ message: "Pincode generated successfully", data: newPincode });
+  } catch (error) {
+    console.error("Error generating pincode:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+module.exports = router;
+
+
+
+
+
+
+
+
 
 // routes/admin.js
 router.patch('/user/:id/status', async (req, res) => {
