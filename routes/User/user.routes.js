@@ -433,7 +433,7 @@ userRouter.get("/get-kyc-status", async (req, res) => {
 });
 
 
-router.post("/activate", async (req, res) => {
+userRouter.post("/activate", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
