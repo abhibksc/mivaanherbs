@@ -3,7 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const User =require("../models/auth.js");
+const User =require("../models/Users/User.js");
 const { loginAdmin } = require('../controllers/admin.controller.js');
 const handleTransactionAbort = require('../utils/handleTransactionError'); // adjust path accordingly
 

@@ -1,24 +1,24 @@
 
 
-const User = require("../models/auth");
-const { Transaction } = require("../models/Transaction");
+const User = require("../../models/Users/User.js");
+const { Transaction } = require("../../models/Users/UserTransaction.js");
 
 const mongoose = require("mongoose");
-const handleTransactionAbort = require("../utils/handleTransactionError.js"); // adjust path accordingly
+const handleTransactionAbort = require("../../utils/handleTransactionError.js"); // adjust path accordingly
 
 
-const Pincode = require("../models/PincodeSchema.js");
+const Pincode = require("../../models/PincodeSchema.js");
 
 
 const express = require("express");
 const router = express.Router();
-const { loginAdmin, getAdminProfile ,getAllOrders} = require("../controllers/admin.controller");
-const { authMiddleware } = require("../middleware/auth.middleware");
-const dashboard = require('../controllers/admin.controller');
-const txnCtrl = require('../controllers/admin.controller');
+const { loginAdmin, getAdminProfile ,getAllOrders} = require("../../controllers/admin.controller.js");
+const { authMiddleware } = require("../../middleware/auth.middleware.js");
+const dashboard = require('../../controllers/admin.controller.js');
+const txnCtrl = require('../../controllers/admin.controller.js');
 
 
-const { checkRole } = require("../middleware/roles.middleware");
+const { checkRole } = require("../../middleware/roles.middleware.js");
 router.use(authMiddleware, checkRole("admin")); // Protect entire admin route
 
 router.get("/profile", getAdminProfile);
@@ -292,6 +292,8 @@ router.get('/allTxn',  txnCtrl.getAllTransactions);
 router.get('/total-volume',  txnCtrl.getTotalTransactionVolume);
 router.get('/recent',  txnCtrl.getRecentTransactions);
 router.get('/stats',  txnCtrl.getTransactionStats);
+
+
 
 
 

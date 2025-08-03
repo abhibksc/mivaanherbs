@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { Transaction } = require("../models/Transaction");
-const User = require('../models/auth'); // Adjust path to your User model
+const { Transaction } = require("../models/Users/UserTransaction");
+const User = require('../models/Users/User'); // Adjust path to your User model
 
 
 // const { Transaction } = require("../models/Transaction");

@@ -3,13 +3,16 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 
+const path = require("path");
+
 const app = express();
 app.use(express.json());
 app.use(cors()); // This enables CORS for all origins
-
+// Serve static files from the uploads directory
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/user.routes');
-const adminRoutes = require("./routes/admin.routes");
+const userRoutes = require('./routes/User/user.routes');
+const adminRoutes = require("./routes/Admin/admin.routes");
 const { authMiddleware } = require("./middleware/auth.middleware");
 const { checkRole } = require("./middleware/roles.middleware");
 
