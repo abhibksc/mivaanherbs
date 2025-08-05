@@ -46,6 +46,8 @@ userRouter.post("/purchase-item", async (req, res) => {
       const user = await User.findOne({ username }).session(session);
       if (!user) {
         throw new Error("User not found");
+
+
       }
 
       // 2. Activate user
@@ -91,7 +93,10 @@ userRouter.get(
 
   async (req, res) => {
     try {
-      const userId = req.user._id; // Assuming auth middleware sets req.user
+      const userId = req.user.id; // Assuming auth middleware sets req.user
+
+      console.log(userId);
+      
 
       // Get all users who have this user in their upline_path
       const downlineUsers = await User.find({ upline_path: userId })

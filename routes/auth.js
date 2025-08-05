@@ -9,10 +9,22 @@ const handleTransactionAbort = require('../utils/handleTransactionError'); // ad
 
 // Generate username
 function generateUsername(fullName) {
-  const prefix = fullName.replace(/[^A-Za-z]/g, '').toLowerCase().substring(0, 3);
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return prefix + random;
+  const firstWord = fullName.trim().split(' ')[0].replace(/[^A-Za-z]/g, '').toLowerCase();
+  const random = Math.floor(1000 + Math.random() * 9000); // 4-digit random number
+  return `USER_${firstWord}${random}`;
 }
+
+
+function generateSponsorId(mobile, fullName) {
+  const firstName = fullName.trim().split(' ')[0].replace(/[^A-Za-z]/g, '').toLowerCase();
+  const last4Digits = mobile.slice(-4); // optional: use only last 4 digits for privacy
+  const timestamp = Date.now();
+  return `MIVAAN_${firstName}_${last4Digits}_${timestamp}`;
+}
+
+
+
+
 
 // Register Route
 router.post('/user-register', async (req, res) => {
@@ -37,9 +49,36 @@ router.post('/user-register', async (req, res) => {
      if (sponsor && !sponsor.is_active) return await handleTransactionAbort(session, res, 400, `Sponsor Id is Not Activated yet!!`)
 
     // Create user
-    const username = generateUsername(full_name);
-    const MYsponsor_id = `${mobile}-${Date.now()}`;
+let username = generateUsername(full_name);
+
+// 👇 Check if username exists
+const usernameExists = await User.findOne({ username });
+if (usernameExists) {
+  return await handleTransactionAbort(session, res, 409, 'Username already exists, please try again');
+}
+
+let MYsponsor_id;
+let isUniqueSponsorId = false;
+
+while (!isUniqueSponsorId) {
+  MYsponsor_id = generateSponsorId(mobile, full_name);
+  const sponsorIdExists = await User.findOne({ MYsponsor_id });
+  if (!sponsorIdExists) {
+    isUniqueSponsorId = true;
+  } else {
+    // optional: wait or log before retrying
+    console.log('Generated sponsor ID already exists. Retrying...');
+  }
+}
+
+
+
+
+
+
     const hashedPassword = await bcrypt.hash(password, 10);
+
+
     const crt_date = new Date();
     console.error(MYsponsor_id);
     const newUser = new User({
