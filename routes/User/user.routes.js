@@ -15,6 +15,7 @@ const UserNominee = require("../../models/Users/UserNominee.js");
 
 const multer = require("multer");
 const path = require("path");
+const UserWalletRequest = require("../../models/Users/UserWalletRequest.js");
 
 // Multer config
 const storage = multer.diskStorage({
@@ -204,6 +205,18 @@ userRouter.get("/dashboard-data", async (req, res) => {
     res.status(500).json({ message: "Something went wrong" });
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -753,5 +766,93 @@ userRouter.put("/updateNominee", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ****************************** Request ******************************************
+
+
+
+
+// Fund Request Route
+userRouter.post("/fundRequest", upload.single("screenshot"), async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const userId = req.user.id;
+
+    if (!amount || !req.file) {
+      return res.status(400).json({ message: "Amount and screenshot image are required." });
+    }
+
+    const filename = req.file.filename;
+    const screenshotUrl = `${req.protocol}://${req.headers.host}/uploads/kyc/${filename}`;
+
+    const newRequest = new UserWalletRequest({
+      user: userId,
+      amount,
+      screenshot: screenshotUrl, // store full absolute URL
+    });
+
+    await newRequest.save();
+
+    res.status(201).json({
+      message: "Wallet request submitted successfully.",
+      request: newRequest,
+    });
+  } catch (error) {
+    console.error("Wallet request error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
+
+userRouter.get("/get-all-fundRequest", async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const requests = await UserWalletRequest.find({ user: userId }).sort({ requested_at: -1 });
+
+    const formattedRequests = requests.map((req) => {
+      let screenshotUrl = req.screenshot;
+
+      // If screenshot is not already a full URL
+      if (!screenshotUrl.startsWith("http")) {
+        const fullUrl = req.protocol + "://" + req.get("host");
+        screenshotUrl = `${fullUrl}/${screenshotUrl.replace(/\\/g, "/")}`;
+      }
+
+      return {
+        ...req._doc,
+        screenshot: screenshotUrl,
+      };
+    });
+
+    res.status(200).json({ success: true, data: formattedRequests });
+  } catch (error) {
+    console.error("Error fetching wallet requests:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+
+
+
+
+
 
 module.exports = userRouter;

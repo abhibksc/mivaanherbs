@@ -28,14 +28,13 @@ const mlmReferralSchema = new mongoose.Schema(
     joined_at: { type: Date, default: Date.now },
 
     // ✅ NEW FIELD
-   position: {
-  type: String,
-  required: false
-}
+    position: {
+      type: String,
+      required: false,
+    },
   },
   { _id: false }
 );
-
 
 // User Schema
 const userSchema = new mongoose.Schema({
@@ -52,7 +51,7 @@ const userSchema = new mongoose.Schema({
     ref: "User",
     default: null,
   },
-  
+
   MYsponsor_id: { type: String, required: true },
   other_sponsor_id: { type: String, default: null },
 
@@ -70,8 +69,7 @@ const userSchema = new mongoose.Schema({
   left_bv: { type: Number, default: 0 },
   right_bv: { type: Number, default: 0 },
 
-
-    fighter_user_id: {
+  fighter_user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     default: null,

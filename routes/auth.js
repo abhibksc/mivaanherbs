@@ -108,10 +108,9 @@ router.post("/user-register", async (req, res) => {
         `Invalid sponsor ID`
       );
 
-
-
-
-   const fighter = await User.findOne({ username : fighter_user_id}).session(session);
+    const fighter = await User.findOne({ username: fighter_user_id }).session(
+      session
+    );
 
     if (!fighter)
       return await handleTransactionAbort(
@@ -120,12 +119,6 @@ router.post("/user-register", async (req, res) => {
         400,
         `Invalid fighter ID`
       );
-
-
-
-
-
-
 
     const username = await generateUniqueUsername(session);
     const usernameExists = await User.findOne({ username }).session(session);
@@ -148,7 +141,7 @@ router.post("/user-register", async (req, res) => {
       full_name,
       mobile,
       email,
-      fighter_user_id : fighter._id,
+      fighter_user_id: fighter._id,
       referred_by: sponsor._id,
       other_sponsor_id: sponsor.MYsponsor_id,
       MYsponsor_id,
@@ -216,7 +209,6 @@ router.post("/user-register", async (req, res) => {
       position,
     });
     await sponsor.save({ session });
-
 
     await session.commitTransaction();
     session.endSession();
