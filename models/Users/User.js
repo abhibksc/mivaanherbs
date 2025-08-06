@@ -26,9 +26,16 @@ const mlmReferralSchema = new mongoose.Schema(
     package_amount: { type: Number, required: true },
     benefit_percent: { type: Number, required: true },
     joined_at: { type: Date, default: Date.now },
+
+    // ✅ NEW FIELD
+   position: {
+  type: String,
+  required: false
+}
   },
   { _id: false }
 );
+
 
 // User Schema
 const userSchema = new mongoose.Schema({
@@ -73,7 +80,7 @@ const userSchema = new mongoose.Schema({
 
   package: { type: Number },
   is_active: { type: Boolean, default: false },
-
+  level: { type: Number, default: 0 }, // 👈 Add this
   crt_by: { type: String },
   crt_date: { type: Date, default: Date.now },
 });
