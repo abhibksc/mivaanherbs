@@ -8,123 +8,133 @@ const { loginAdmin } = require('../controllers/admin.controller.js');
 const handleTransactionAbort = require('../utils/handleTransactionError'); // adjust path accordingly
 
 // Generate username
-function generateUsername(fullName) {
-  const firstWord = fullName.trim().split(' ')[0].replace(/[^A-Za-z]/g, '').toLowerCase();
-  const random = Math.floor(1000 + Math.random() * 9000); // 4-digit random number
-  return `USER_${firstWord}${random}`;
-}
-
-
-function generateSponsorId(mobile, fullName) {
-  const firstName = fullName.trim().split(' ')[0].replace(/[^A-Za-z]/g, '').toLowerCase();
-  const last4Digits = mobile.slice(-4); // optional: use only last 4 digits for privacy
-  const timestamp = Date.now();
-  return `MIVAAN_${firstName}_${last4Digits}_${timestamp}`;
+let counter = 1;
+function generateUsername() {
+  return String(counter++).padStart(10, "0");
 }
 
 
 
+// Helper: Breadth First Search (Level Order) to find first free child
+async function findAvailablePosition(startUserId, session) {
+  const queue = [startUserId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    const currentUser = await User.findById(currentId).session(session);
+
+    if (!currentUser.left_user) {
+      return { parent: currentUser, position: "Left" };
+    }
+
+    if (!currentUser.right_user) {
+      return { parent: currentUser, position: "Right" };
+    }
+
+    // Add children to queue
+    queue.push(currentUser.left_user);
+    queue.push(currentUser.right_user);
+  }
+
+  return null; // No space found
+}
 
 
-// Register Route
+
+
+
+
+// 🚀 Register Route
 router.post('/user-register', async (req, res) => {
-
   const session = await mongoose.startSession();
   session.startTransaction();
 
-  const { full_name, mobile, email, password, other_sponsor_id, country_id ,join_at } = req.body;
-  // Basic required field check (without sponsor_id)
+  const { full_name, mobile, email, password, other_sponsor_id, country_id, join_at } = req.body;
+
   if (!full_name || !mobile || !email || !password || !country_id || !join_at || !other_sponsor_id) {
-     return await handleTransactionAbort(session, res, 400, 'All fields are required');
+    return await handleTransactionAbort(session, res, 400, 'All fields are required');
   }
 
   try {
-    // Check for existing mobile/email
-    const exists = await User.findOne({ $or: [{ email }, { mobile }] });
-    if(exists)  return await handleTransactionAbort(session, res, 409, 'Email or Mobile already registered');
-    
-    // If sponsor_id is provided, verify it
-    const sponsor = await User.findOne({MYsponsor_id : other_sponsor_id});
-     if (!sponsor) return await handleTransactionAbort(session, res, 400, `Invalid sponsor ID + ${other_sponsor_id} + ${sponsor}`)
-     if (sponsor && !sponsor.is_active) return await handleTransactionAbort(session, res, 400, `Sponsor Id is Not Activated yet!!`)
+    // 📛 Check if user already exists
+    const exists = await User.findOne({ $or: [{ email }, { mobile }] }).session(session);
+    if (exists) return await handleTransactionAbort(session, res, 409, 'Email or Mobile already registered');
 
-    // Create user
-let username = generateUsername(full_name);
+    // 👤 Validate Sponsor
+   const sponsor = await User.findOne({ MYsponsor_id: other_sponsor_id }).session(session);
 
-// 👇 Check if username exists
-const usernameExists = await User.findOne({ username });
-if (usernameExists) {
-  return await handleTransactionAbort(session, res, 409, 'Username already exists, please try again');
-}
+    if (!sponsor) return await handleTransactionAbort(session, res, 400, `Invalid sponsor ID`);
+    if (!sponsor.is_active) return await handleTransactionAbort(session, res, 400, `Sponsor is not activated yet!`);
 
-let MYsponsor_id;
-let isUniqueSponsorId = false;
+    // 🆔 Generate username
+    let username = generateUsername(); // You should ensure uniqueness
+    const usernameExists = await User.findOne({ username }).session(session);
+    if (usernameExists) return await handleTransactionAbort(session, res, 409, 'Username already exists, try again');
 
-while (!isUniqueSponsorId) {
-  MYsponsor_id = generateSponsorId(mobile, full_name);
-  const sponsorIdExists = await User.findOne({ MYsponsor_id });
-  if (!sponsorIdExists) {
-    isUniqueSponsorId = true;
-  } else {
-    // optional: wait or log before retrying
-    console.log('Generated sponsor ID already exists. Retrying...');
-  }
-}
-
-
-
-
-
-
+    const MYsponsor_id = username;
     const hashedPassword = await bcrypt.hash(password, 10);
-
-
     const crt_date = new Date();
-    console.error(MYsponsor_id);
+
     const newUser = new User({
       username,
       full_name,
       mobile,
       email,
-        referred_by : sponsor._id,
-     other_sponsor_id: sponsor.MYsponsor_id,
+      referred_by: sponsor._id,
+      other_sponsor_id: sponsor.MYsponsor_id,
       MYsponsor_id,
       country_id,
       password: hashedPassword,
       is_active: false,
-      crt_by : sponsor.username,
+      crt_by: sponsor.username,
       crt_date
     });
 
-    await newUser.save();
+    await newUser.save({ session });
 
-    // for Sponser person...
-
-    if(join_at === "Left"){
-       sponsor.left_user = sponsor._id;
+    // 📦 Left or Right Join Logic with BFS
+    if (join_at === "Left") {
+      if (!sponsor.left_user) {
+        sponsor.left_user = newUser._id;
+        await sponsor.save({ session });
+      } else {
+        const result = await findAvailablePosition(sponsor.left_user, session);
+        if (!result) return await handleTransactionAbort(session, res, 409, 'No space available on the left tree');
+        result.parent[result.position] = newUser._id;
+        await result.parent.save({ session });
+      }
+    } else if (join_at === "Right") {
+      if (!sponsor.right_user) {
+        sponsor.right_user = newUser._id;
+        await sponsor.save({ session });
+      } else {
+        const result = await findAvailablePosition(sponsor.right_user, session);
+        if (!result) return await handleTransactionAbort(session, res, 409, 'No space available on the right tree');
+        result.parent[result.position] = newUser._id;
+        await result.parent.save({ session });
+      }
+    } else {
+      return await handleTransactionAbort(session, res, 400, 'join_at must be "Left" or "Right"');
     }
-    else if(join_at === "Right"){
-       sponsor.right_user = sponsor._id;
-    }
-    else{
-return await handleTransactionAbort(session, res, 404, 'join_at missing!!')
-    }
+    
 
-
-
-
-    await sponsor.save();
+    // ✅ All good
     await session.commitTransaction();
     session.endSession();
-    return  res.json({ success: true, message: 'User registered successfully', username : username,MYsponsor_id : MYsponsor_id });
 
-
+    return res.json({
+      success: true,
+      message: 'User registered successfully',
+      username,
+      MYsponsor_id
+    });
 
   } catch (err) {
     console.error(err);
-    await handleTransactionAbort(session, res, 500,  `Server error: ' + ${err.message}`);
+    await handleTransactionAbort(session, res, 500, `Server error: ${err.message}`);
   }
 });
+
 
 // Login Route
 router.post('/user-login', async (req, res) => {
