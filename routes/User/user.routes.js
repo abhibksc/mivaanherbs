@@ -116,42 +116,62 @@ userRouter.get(
   }
 );
 
-const buildTree = async (userId) => {
-  const user = await User.findById(userId)
-    .select("username full_name left_user right_user package is_active")
-    .lean();
 
+
+
+
+
+
+
+
+// Recursive Function to build nested MLM Tree
+async function buildMLMTree(userId) {
+  const user = await User.findById(userId).lean(); // use lean for performance
   if (!user) return null;
 
-  const left = user.left_user ? await buildTree(user.left_user) : null;
-  const right = user.right_user ? await buildTree(user.right_user) : null;
-
-  return {
+  const node = {
     _id: user._id,
     username: user.username,
     full_name: user.full_name,
-    package: user.package,
-    is_active: user.is_active,
-    left,
-    right,
+    level: user.level,
+    position: user.position, // Optional
+    children: []
   };
-};
+
+  if (user.left_user) {
+    const leftTree = await buildMLMTree(user.left_user);
+    if (leftTree) node.children.push({ position: "left", ...leftTree });
+  }
+
+  if (user.right_user) {
+    const rightTree = await buildMLMTree(user.right_user);
+    if (rightTree) node.children.push({ position: "right", ...rightTree });
+  }
+
+  return node;
+}
+
 
 userRouter.get("/mygeology", async (req, res) => {
   try {
-    const userId = req.user._id;
+  const userId = req.user.id;
+  console.log(userId);
+  console.log(req);
 
-    const tree = await buildTree(userId);
+  
 
-    res.json({
-      status: true,
-      tree,
-    });
+    if (!userId) return res.status(400).json({ success: false, message: "User ID is required" });
+
+    const tree = await buildMLMTree(userId);
+
+    if (!tree) {
+      return res.status(404).json({ success: false, message: "User not found or no downlines" });
+    }
+
+    return res.status(200).json({ success: true, data: tree });
   } catch (err) {
-    console.error("MyGeology Error:", err);
-    res
-      .status(500)
-      .json({ status: false, message: "Failed to build genealogy" });
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
 
@@ -184,6 +204,30 @@ userRouter.get("/dashboard-data", async (req, res) => {
     res.status(500).json({ message: "Something went wrong" });
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 userRouter.get(
   "/getWalletDetails",

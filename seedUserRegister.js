@@ -55,10 +55,10 @@ const seedUserRegister = async () => {
     console.log("✅ Connected to MongoDB");
 
     // 👤 New user info
-    const full_name = "Test Seeder";
+    const full_name = "Raj Kumar";
     const mobile = "9876500001";
-    const email = "seeder1@example.com";
-    const password = await bcrypt.hash("Seeder@123", 10);
+    const email = "RajKumar@gmail.com";
+    const password = await bcrypt.hash("rajkumar123", 10);
     const join_at = "Left";
     const country_id = "IN";
 
@@ -67,7 +67,7 @@ const seedUserRegister = async () => {
     if (exists) throw new Error("❌ Email or Mobile already registered");
 
     // Try to find sponsor
-    const sponsorEmail = "owner@mivaan.com";
+    const sponsorEmail = "imowner@mivaan.com";
     let sponsor = await User.findOne({ email: sponsorEmail });
 
     // If sponsor not found and it's first user
@@ -112,32 +112,7 @@ const seedUserRegister = async () => {
 
     await newUser.save();
 
-    // Assign left/right if sponsor exists
-    if (sponsor) {
-      if (join_at === "Left") {
-        if (!sponsor.left_user) {
-          sponsor.left_user = newUser._id;
-          await sponsor.save();
-        } else {
-          const result = await findAvailablePosition(sponsor.left_user);
-          if (!result) throw new Error("❌ No space available on the left side");
-          result.parent[result.position] = newUser._id;
-          await result.parent.save();
-        }
-      } else if (join_at === "Right") {
-        if (!sponsor.right_user) {
-          sponsor.right_user = newUser._id;
-          await sponsor.save();
-        } else {
-          const result = await findAvailablePosition(sponsor.right_user);
-          if (!result) throw new Error("❌ No space available on the right side");
-          result.parent[result.position] = newUser._id;
-          await result.parent.save();
-        }
-      } else {
-        throw new Error('❌ Invalid join_at value. Use "Left" or "Right"');
-      }
-    }
+  
 
     console.log("✅ Seeder user registered successfully with username:", username);
   } catch (err) {

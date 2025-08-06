@@ -1,29 +1,28 @@
-
-
 const User = require("../../models/Users/User.js");
 const { Transaction } = require("../../models/Users/UserTransaction.js");
 
 const mongoose = require("mongoose");
 const handleTransactionAbort = require("../../utils/handleTransactionError.js"); // adjust path accordingly
 
-
 const Pincode = require("../../models/PincodeSchema.js");
-
 
 const express = require("express");
 const router = express.Router();
-const { loginAdmin, getAdminProfile ,getAllOrders} = require("../../controllers/admin.controller.js");
+const {
+  loginAdmin,
+  getAdminProfile,
+  getAllOrders,
+} = require("../../controllers/admin.controller.js");
 const { authMiddleware } = require("../../middleware/auth.middleware.js");
-const dashboard = require('../../controllers/admin.controller.js');
-const txnCtrl = require('../../controllers/admin.controller.js');
-
+const dashboard = require("../../controllers/admin.controller.js");
+const txnCtrl = require("../../controllers/admin.controller.js");
 
 const { checkRole } = require("../../middleware/roles.middleware.js");
 router.use(authMiddleware, checkRole("admin")); // Protect entire admin route
 
 router.get("/profile", getAdminProfile);
-router.get('/order', getAllOrders);
-router.get('/allusers', async (req, res) => {
+router.get("/order", getAllOrders);
+router.get("/allusers", async (req, res) => {
   try {
     // Fetch users
     const users = await User.find(
@@ -40,7 +39,9 @@ router.get('/allusers', async (req, res) => {
     ).sort({ crt_date: -1 });
 
     // Fetch all successful transactions, sorted by creation date
-    const transactions = await Transaction.find({ status: 'Success' }).sort({ created_at: 1 });
+    const transactions = await Transaction.find({ status: "Success" }).sort({
+      created_at: 1,
+    });
 
     // Map user_id => [transactions], and first transaction
     const firstTransactionMap = {};
@@ -49,7 +50,7 @@ router.get('/allusers', async (req, res) => {
 
     for (const txn of transactions) {
       const userId = txn.user_id.toString();
-      const amount = parseFloat(txn.package_amount?.toString() || '0');
+      const amount = parseFloat(txn.package_amount?.toString() || "0");
 
       // Sum all packages
       userPackageSums[userId] = (userPackageSums[userId] || 0) + amount;
@@ -84,13 +85,11 @@ router.get('/allusers', async (req, res) => {
       withdrawals: 0,
       data: userData,
     });
-
   } catch (err) {
     console.error("User list error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
 
 router.post("/activate", async (req, res) => {
   const session = await mongoose.startSession();
@@ -102,19 +101,17 @@ router.post("/activate", async (req, res) => {
     // 1. Fetch user
     const user = await User.findOne({ username });
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (user.is_active) return res.status(404).json({ error: "Id Already Activated!" });
-
+    if (user.is_active)
+      return res.status(404).json({ error: "Id Already Activated!" });
 
     // 2. fetch transaction
 
     const user_transaction = await Transaction.findOne({ user_id: user._id });
     if (!user_transaction)
-      return res
-        .status(404)
-        .json({
-          error:
-            "No Transaction Found.. Please Purchase any Item then Activate Account",
-        });
+      return res.status(404).json({
+        error:
+          "No Transaction Found.. Please Purchase any Item then Activate Account",
+      });
 
     // 2. Activate user
     user.is_active = true;
@@ -154,19 +151,6 @@ router.post("/activate", async (req, res) => {
       });
       sponsorChanged = true;
 
-      // 7. Fighter Income (5%)
-      if (sponsor.left_user && sponsor.right_user) {
-        const fighterIncome = packageAmount * 0.05;
-        sponsor.wallet_balance += fighterIncome;
-        sponsor.fighter_income += fighterIncome;
-        sponsor.income_logs.push({
-          type: "Fighter",
-          amount: fighterIncome,
-          from_user: user.other_sponsor_id,
-        });
-        sponsorChanged = true;
-      }
-
       // 8. Update BV
       const side =
         String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
@@ -190,6 +174,40 @@ router.post("/activate", async (req, res) => {
       }
 
       if (sponsorChanged) await sponsor.save();
+
+
+
+
+
+
+
+
+
+
+
+          // ✅ Apply Fighter Income Now if `fighter_user_id` Provided
+          if (user.fighter_user_id) {
+        const fighter = await User.findOne({ username: user.fighter_user_id }).session(session);
+            if (fighter) {
+              const fighterIncome = (newUser.package || 0) * 0.05;
+      fighter.wallet_balance = parseInt(fighter.wallet_balance ?? 0) + parseInt(fighterIncome);
+      fighter.fighter_income = parseInt(fighter.fighter_income ?? 0) + parseInt(fighterIncome);
+      
+      
+      
+                   console.log(fighter);
+      
+              
+              fighter.income_logs.push({
+                type: "Fighter",
+                amount: fighterIncome,
+                from_user: newUser._id,
+              });
+      
+              await fighter.save({ session });
+            }
+          }
+      
     }
 
     return res.json({
@@ -207,14 +225,13 @@ router.post("/activate", async (req, res) => {
   }
 });
 
-
-
-
 router.post("/generate-pincode", async (req, res) => {
   const { username, pincode, status } = req.body;
 
   if (!username || !pincode) {
-    return res.status(400).json({ message: "Username and pincode are required" });
+    return res
+      .status(400)
+      .json({ message: "Username and pincode are required" });
   }
 
   try {
@@ -227,13 +244,14 @@ router.post("/generate-pincode", async (req, res) => {
     const newPincode = new Pincode({ username, pincode, status });
     await newPincode.save();
 
-    res.status(201).json({ message: "Pincode generated successfully", data: newPincode });
+    res
+      .status(201)
+      .json({ message: "Pincode generated successfully", data: newPincode });
   } catch (error) {
     console.error("Error generating pincode:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 // Get all pincodes
 router.get("/pincodes", async (req, res) => {
@@ -242,60 +260,51 @@ router.get("/pincodes", async (req, res) => {
     res.status(200).json({ success: true, data: pincodes });
   } catch (error) {
     console.error("Error fetching pincodes:", error);
-    res.status(500).json({ success: false, message: "Server error while fetching pincodes" });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Server error while fetching pincodes",
+      });
   }
 });
 
-
-
-
-
-
-
-
 // routes/admin.js
-router.patch('/user/:id/status', async (req, res) => {
+router.patch("/user/:id/status", async (req, res) => {
   const { id } = req.params;
   const { is_active } = req.body;
 
   try {
-    await User.updateOne({ _id: id }, { $set : { is_active } });
+    await User.updateOne({ _id: id }, { $set: { is_active } });
     console.log(is_active);
 
     res.json({
       success: true,
-      message: `User ${is_active ? 'activated' : 'deactivated'}`,
+      message: `User ${is_active ? "activated" : "deactivated"}`,
       _id: id,
-      is_active
+      is_active,
     });
   } catch (err) {
     res.status(500).json({
       success: false,
-      message: 'Failed to update user status',
-      error: err
+      message: "Failed to update user status",
+      error: err,
     });
   }
 });
 
+router.get("/total-users", dashboard.getTotalUsers);
+router.get("/active-users", dashboard.getActiveUsers);
+router.get("/total-income", dashboard.getTotalIncome);
+router.get("/recent-signups", dashboard.getRecentSignups);
+router.get("/top-earners", dashboard.getTopEarners);
+router.get("/income-summary", dashboard.getIncomeSummary);
+router.get("/bv-stats", dashboard.getBusinessVolumeStats);
+router.get("/tree/:userId", dashboard.getTreeDataForUser); // optional
 
-router.get('/total-users', dashboard.getTotalUsers);
-router.get('/active-users', dashboard.getActiveUsers);
-router.get('/total-income', dashboard.getTotalIncome);
-router.get('/recent-signups', dashboard.getRecentSignups);
-router.get('/top-earners', dashboard.getTopEarners);
-router.get('/income-summary',  dashboard.getIncomeSummary);
-router.get('/bv-stats',  dashboard.getBusinessVolumeStats);
-router.get('/tree/:userId',  dashboard.getTreeDataForUser); // optional
-
-
-router.get('/allTxn',  txnCtrl.getAllTransactions);
-router.get('/total-volume',  txnCtrl.getTotalTransactionVolume);
-router.get('/recent',  txnCtrl.getRecentTransactions);
-router.get('/stats',  txnCtrl.getTransactionStats);
-
-
-
-
-
+router.get("/allTxn", txnCtrl.getAllTransactions);
+router.get("/total-volume", txnCtrl.getTotalTransactionVolume);
+router.get("/recent", txnCtrl.getRecentTransactions);
+router.get("/stats", txnCtrl.getTransactionStats);
 
 module.exports = router;

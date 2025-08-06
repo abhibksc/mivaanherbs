@@ -52,6 +52,7 @@ const userSchema = new mongoose.Schema({
     ref: "User",
     default: null,
   },
+  
   MYsponsor_id: { type: String, required: true },
   other_sponsor_id: { type: String, default: null },
 
@@ -68,6 +69,13 @@ const userSchema = new mongoose.Schema({
 
   left_bv: { type: Number, default: 0 },
   right_bv: { type: Number, default: 0 },
+
+
+    fighter_user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 
   wallet_balance: { type: Number, default: 0 },
   direct_sponsor_income: { type: Number, default: 0 },

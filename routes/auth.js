@@ -51,7 +51,6 @@ function calculateBenefitPercent(packageAmount) {
   return 3;
 }
 
-
 // 🚀 Register Route
 router.post("/user-register", async (req, res) => {
   const session = await mongoose.startSession();
@@ -65,6 +64,7 @@ router.post("/user-register", async (req, res) => {
     other_sponsor_id,
     country_id,
     join_at,
+    fighter_user_id, // 🆕 New field
   } = req.body;
 
   if (
@@ -74,7 +74,8 @@ router.post("/user-register", async (req, res) => {
     !password ||
     !country_id ||
     !join_at ||
-    !other_sponsor_id
+    !other_sponsor_id ||
+    !fighter_user_id
   ) {
     return await handleTransactionAbort(
       session,
@@ -85,7 +86,6 @@ router.post("/user-register", async (req, res) => {
   }
 
   try {
-    // 📛 Check if user already exists
     const exists = await User.findOne({ $or: [{ email }, { mobile }] }).session(
       session
     );
@@ -97,11 +97,9 @@ router.post("/user-register", async (req, res) => {
         "Email or Mobile already registered"
       );
 
-    // 👤 Validate Sponsor
     const sponsor = await User.findOne({
       MYsponsor_id: other_sponsor_id,
     }).session(session);
-
     if (!sponsor)
       return await handleTransactionAbort(
         session,
@@ -110,10 +108,25 @@ router.post("/user-register", async (req, res) => {
         `Invalid sponsor ID`
       );
 
-    //     const idString = exists._id.toString();
-    // const last4 = idString.slice(-4);
 
-    // 🆔 Generate username
+
+
+   const fighter = await User.findOne({ username : fighter_user_id}).session(session);
+
+    if (!fighter)
+      return await handleTransactionAbort(
+        session,
+        res,
+        400,
+        `Invalid fighter ID`
+      );
+
+
+
+
+
+
+
     const username = await generateUniqueUsername(session);
     const usernameExists = await User.findOne({ username }).session(session);
     if (usernameExists)
@@ -135,6 +148,7 @@ router.post("/user-register", async (req, res) => {
       full_name,
       mobile,
       email,
+      fighter_user_id : fighter._id,
       referred_by: sponsor._id,
       other_sponsor_id: sponsor.MYsponsor_id,
       MYsponsor_id,
@@ -144,14 +158,14 @@ router.post("/user-register", async (req, res) => {
       crt_by: sponsor.username,
       crt_date,
       upline_path,
-      level, // ✅ here
+      level,
     });
 
     await newUser.save({ session });
 
-      // enum: ["left", "right"],
+    // 🧠 JOIN TREE LOGIC
+    const position = join_at === "Right" ? "right" : "left";
 
-    // 📦 Left or Right Join Logic with BFS
     if (join_at === "Left") {
       if (!sponsor.left_user) {
         sponsor.left_user = newUser._id;
@@ -193,28 +207,17 @@ router.post("/user-register", async (req, res) => {
       );
     }
 
-    //     enum: ["left", "right"],
-const position = join_at === "Right" ? "right" : "left";
-console.log(position);
+    // MLM NETWORK UPDATE
+    sponsor.my_mlm_network.push({
+      user_id: newUser._id,
+      package_amount: newUser.package || 0,
+      benefit_percent: calculateBenefitPercent(newUser.package || 0),
+      joined_at: new Date(),
+      position,
+    });
+    await sponsor.save({ session });
 
 
-
-
-// ✅ Add user to sponsor's MLM network
-sponsor.my_mlm_network.push({
-  user_id: newUser._id,
-  package_amount: newUser.package || 0,
-  benefit_percent: calculateBenefitPercent(newUser.package || 0),
-  joined_at: new Date(),
-  position: position, // 'left' or 'right'
-});
-
-
-await sponsor.save({ session }); // Save the network update
-
-
-
-    // ✅ All good
     await session.commitTransaction();
     session.endSession();
 
