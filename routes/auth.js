@@ -154,10 +154,13 @@ router.post('/user-login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid password' });
 
+    
+
 const token = jwt.sign(
   {
     id: user._id,
     username: user.username,
+
     role: user.role || "user", // fallback to "user"
   },
   process.env.JWT_SECRET,
@@ -171,6 +174,7 @@ const token = jwt.sign(
     res.json({
       success: true,
       message: 'Login successful',
+        full_name: user.full_name,
       token,
       userName : user.username,
        MYsponsor_id : user.MYsponsor_id,
