@@ -18,6 +18,7 @@ const dashboard = require("../../controllers/admin.controller.js");
 const txnCtrl = require("../../controllers/admin.controller.js");
 
 const { checkRole } = require("../../middleware/roles.middleware.js");
+const UserWalletRequest = require("../../models/Users/UserWalletRequest.js");
 router.use(authMiddleware, checkRole("admin")); // Protect entire admin route
 
 router.get("/profile", getAdminProfile);
@@ -175,39 +176,29 @@ router.post("/activate", async (req, res) => {
 
       if (sponsorChanged) await sponsor.save();
 
+      // ✅ Apply Fighter Income Now if `fighter_user_id` Provided
+      if (user.fighter_user_id) {
+        const fighter = await User.findOne({
+          username: user.fighter_user_id,
+        }).session(session);
+        if (fighter) {
+          const fighterIncome = (newUser.package || 0) * 0.05;
+          fighter.wallet_balance =
+            parseInt(fighter.wallet_balance ?? 0) + parseInt(fighterIncome);
+          fighter.fighter_income =
+            parseInt(fighter.fighter_income ?? 0) + parseInt(fighterIncome);
 
+          console.log(fighter);
 
+          fighter.income_logs.push({
+            type: "Fighter",
+            amount: fighterIncome,
+            from_user: newUser._id,
+          });
 
-
-
-
-
-
-
-
-          // ✅ Apply Fighter Income Now if `fighter_user_id` Provided
-          if (user.fighter_user_id) {
-        const fighter = await User.findOne({ username: user.fighter_user_id }).session(session);
-            if (fighter) {
-              const fighterIncome = (newUser.package || 0) * 0.05;
-      fighter.wallet_balance = parseInt(fighter.wallet_balance ?? 0) + parseInt(fighterIncome);
-      fighter.fighter_income = parseInt(fighter.fighter_income ?? 0) + parseInt(fighterIncome);
-      
-      
-      
-                   console.log(fighter);
-      
-              
-              fighter.income_logs.push({
-                type: "Fighter",
-                amount: fighterIncome,
-                from_user: newUser._id,
-              });
-      
-              await fighter.save({ session });
-            }
-          }
-      
+          await fighter.save({ session });
+        }
+      }
     }
 
     return res.json({
@@ -260,12 +251,10 @@ router.get("/pincodes", async (req, res) => {
     res.status(200).json({ success: true, data: pincodes });
   } catch (error) {
     console.error("Error fetching pincodes:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Server error while fetching pincodes",
-      });
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching pincodes",
+    });
   }
 });
 
@@ -306,5 +295,96 @@ router.get("/allTxn", txnCtrl.getAllTransactions);
 router.get("/total-volume", txnCtrl.getTotalTransactionVolume);
 router.get("/recent", txnCtrl.getRecentTransactions);
 router.get("/stats", txnCtrl.getTransactionStats);
+
+
+
+
+
+
+
+// fund
+
+// Admin Fund Requests View API
+router.get("/all-fundRequests", async (req, res) => {
+  try {
+    // Optional: Check if the user is admin
+    // if (!req.user.isAdmin) return res.status(403).json({ message: "Access denied" });
+
+    const requests = await UserWalletRequest.find()
+      .populate("user", "username full_name email mobile") // populate basic user info
+      .sort({ requested_at: -1 }); // latest first
+
+    res.status(200).json({
+      message: "All wallet fund requests fetched successfully.",
+      total: requests.length,
+      requests,
+    });
+  } catch (error) {
+    console.error("Admin fund request fetch error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
+// Approve or Reject Fund Request
+// Approve or Reject Fund Request
+router.patch("/update-fundRequest/:id", async (req, res) => {
+  const { id } = req.params;
+  const { status, approved_by = "Admin" } = req.body;
+
+  if (!["Approved", "Rejected"].includes(status)) {
+    return res.status(400).json({ message: "Invalid status value" });
+  }
+
+  try {
+    const fundRequest = await UserWalletRequest.findById(id).populate("user");
+
+    if (!fundRequest) {
+      return res.status(404).json({ message: "Fund request not found" });
+    }
+
+    if (fundRequest.status !== "Pending") {
+      return res.status(400).json({ message: "Request already processed" });
+    }
+
+    fundRequest.status = status;
+    fundRequest.approved_by = approved_by;
+    fundRequest.approved_at = new Date();
+
+    await fundRequest.save();
+
+    if (status === "Approved") {
+      // Create transaction
+      const transaction = await UserWalletTransaction.create({
+        user_id: fundRequest.user._id,
+        type: "AdminCredit",
+        amount: fundRequest.amount,
+        note: "Admin approved wallet fund request",
+        created_at: new Date(),
+      });
+
+      // Add balance to user wallet
+      fundRequest.user.wallet_balance += fundRequest.amount;
+      await fundRequest.user.save(); // Save the updated user balance
+
+      console.log("Wallet transaction created:", transaction);
+    }
+
+    return res.status(200).json({
+      message: `Request ${status.toLowerCase()} successfully`,
+      request: fundRequest,
+    });
+  } catch (error) {
+    console.error("Update fund request error:", error.message);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+
+
+
+
+
 
 module.exports = router;

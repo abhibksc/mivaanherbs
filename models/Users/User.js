@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-// Embedded Income Log for userSchema
+// Income Log Subschema
 const incomeLogSubSchema = new mongoose.Schema(
   {
     type: {
@@ -15,7 +15,7 @@ const incomeLogSubSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// MLM Network Subschema
+// MLM Referral Subschema
 const mlmReferralSchema = new mongoose.Schema(
   {
     user_id: {
@@ -26,17 +26,24 @@ const mlmReferralSchema = new mongoose.Schema(
     package_amount: { type: Number, required: true },
     benefit_percent: { type: Number, required: true },
     joined_at: { type: Date, default: Date.now },
-
-    // ✅ NEW FIELD
-    position: {
-      type: String,
-      required: false,
-    },
+    position: { type: String },
   },
   { _id: false }
 );
 
-// User Schema
+// ✅ ActivatedWith Subschema
+const activatedWithSchema = new mongoose.Schema(
+  {
+    product_name: { type: String, required: true },
+    product_mrp: { type: Number, required: true },
+    product_dp: { type: Number, required: true },
+    product_bv: { type: Number, required: true },
+    total_activated_amount: { type: Number, required: true },
+  },
+  { _id: false }
+);
+
+// ✅ Main User Schema
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true },
   full_name: { type: String, required: true },
@@ -45,7 +52,6 @@ const userSchema = new mongoose.Schema({
   country_id: { type: String },
 
   password: { type: String, required: true },
-  // nn
   referred_by: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -84,13 +90,14 @@ const userSchema = new mongoose.Schema({
   my_mlm_network: [mlmReferralSchema],
   upline_path: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 
-  package: { type: Number },
+  // ✅ Updated field
+  Activated_with: activatedWithSchema,
+
   is_active: { type: Boolean, default: false },
-  level: { type: Number, default: 0 }, // 👈 Add this
+  level: { type: Number, default: 0 },
   crt_by: { type: String },
   crt_date: { type: Date, default: Date.now },
 });
 
 const User = mongoose.model("User", userSchema);
-
 module.exports = User;

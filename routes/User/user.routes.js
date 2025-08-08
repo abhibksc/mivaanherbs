@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const User = require("../../models/Users/User.js");
 const handleTransactionAbort = require("../../utils/handleTransactionError.js"); // adjust path accordingly
+const { v4: uuidv4 } = require("uuid");
 
 const { authMiddleware } = require("../../middleware/auth.middleware.js");
 const { checkRole } = require("../../middleware/roles.middleware.js");
@@ -47,8 +48,6 @@ userRouter.post("/purchase-item", async (req, res) => {
       const user = await User.findOne({ username }).session(session);
       if (!user) {
         throw new Error("User not found");
-
-
       }
 
       // 2. Activate user
@@ -97,7 +96,6 @@ userRouter.get(
       const userId = req.user.id; // Assuming auth middleware sets req.user
 
       console.log(userId);
-      
 
       // Get all users who have this user in their upline_path
       const downlineUsers = await User.find({ upline_path: userId })
@@ -117,14 +115,6 @@ userRouter.get(
   }
 );
 
-
-
-
-
-
-
-
-
 // Recursive Function to build nested MLM Tree
 async function buildMLMTree(userId) {
   const user = await User.findById(userId).lean(); // use lean for performance
@@ -136,7 +126,7 @@ async function buildMLMTree(userId) {
     full_name: user.full_name,
     level: user.level,
     position: user.position, // Optional
-    children: []
+    children: [],
   };
 
   if (user.left_user) {
@@ -152,27 +142,31 @@ async function buildMLMTree(userId) {
   return node;
 }
 
-
 userRouter.get("/mygeology", async (req, res) => {
   try {
-  const userId = req.user.id;
-  console.log(userId);
-  console.log(req);
+    const userId = req.user.id;
+    console.log(userId);
+    console.log(req);
 
-  
-
-    if (!userId) return res.status(400).json({ success: false, message: "User ID is required" });
+    if (!userId)
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID is required" });
 
     const tree = await buildMLMTree(userId);
 
     if (!tree) {
-      return res.status(404).json({ success: false, message: "User not found or no downlines" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found or no downlines" });
     }
 
     return res.status(200).json({ success: true, data: tree });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ success: false, message: "Server error", error: err.message });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 });
 
@@ -205,42 +199,6 @@ userRouter.get("/dashboard-data", async (req, res) => {
     res.status(500).json({ message: "Something went wrong" });
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 userRouter.get(
   "/getWalletDetails",
@@ -494,59 +452,83 @@ userRouter.get("/get-kyc-status", async (req, res) => {
   }
 });
 
-
 userRouter.post("/activate", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
+  const MyuserId = req.user.id;
+
   try {
-    const { username , amount } = req.body;
+    const { Other_userId, quantity, name, mrp, dp, bv } = req.body;
 
-    // 1. Fetch user
-    const user = await User.findOne({ username });
+    // 1. Fetch current user (activator)
+    const user = await User.findById(MyuserId).session(session);
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (user.is_active) return res.status(404).json({ error: "Id Already Activated!" });
+    if (user.wallet_balance <= 0)
+      return res.status(400).json({ error: "Wallet is empty" });
+    // 2. Fetch user to activate
 
+    const Other_user = await User.findOne({ username: Other_userId }).session(
+      session
+    );
+    if (!Other_user)
+      return res.status(404).json({ error: "User not found for activation!" });
+    if (Other_user.is_active)
+      return res.status(400).json({ error: "User is already activated!" });
 
-    // 2. fetch transaction
+    // 3. Calculate package total
+    const packageAmount = quantity * parseFloat(dp);
 
-    const user_transaction = await Transaction.findOne({ user_id: user._id });
-    if (!user_transaction)
-      return res
-        .status(404)
-        .json({
-          error:
-            "No Transaction Found.. Please Purchase any Item then Activate Account",
-        });
+    if (user.wallet_balance < packageAmount) {
+      return res.status(400).json({
+        error:
+          "Insufficient wallet balance. Please add funds to your wallet to complete the purchase.",
+      });
+    }
 
-    // 2. Activate user
-    user.is_active = true;
-    const packageAmount = user.package;
-    await user.save();
-    const dp = Math.round(packageAmount * 0.8017);
-    const bv = parseFloat((packageAmount * 0.0079).toFixed(2));
+    // 4. Activate user and store product info
+    Other_user.is_active = true;
+    Other_user.Activated_with = {
+      product_name: name,
+      product_mrp: parseFloat(mrp),
+      product_dp: parseFloat(dp),
+      product_bv: parseFloat(bv),
+      total_activated_amount: packageAmount,
+    };
 
-    // 3. updat transaction table where user_transaction._id
-    await Transaction.updateOne(
-      { user_id: user._id }, // Filter
-      {
-        $set: {
-          dp,
-          bv,
+    await Other_user.save({ session });
+
+    // 5. Update matching Transaction for this user
+    const generatedPaymentRef = `TXN_${Date.now()}_${Math.floor(
+      Math.random() * 10000
+    )}`;
+    // OR use UUID: const generatedPaymentRef = uuidv4();
+
+    const transaction = await Transaction.create(
+      [
+        {
+          user_id: Other_user._id,
+          payment_ref: generatedPaymentRef,
+          dp: mongoose.Types.Decimal128.fromString(String(dp)),
+          bv: mongoose.Types.Decimal128.fromString(String(bv)),
+          package_amount: mongoose.Types.Decimal128.fromString(
+            String(packageAmount)
+          ),
           status: "Success",
         },
-      }
+      ],
+      { session }
     );
 
-    // 4. Find sponsor
+    // 6. Find Sponsor
     const sponsor = await User.findOne({
-      my_sponsor_id: user.other_sponsor_id,
-    });
+      MYsponsor_id: user.other_sponsor_id,
+    }).session(session);
 
     if (sponsor) {
       let sponsorChanged = false;
-      d;
-      // 6. Direct Income (10%)
+
+      // A. Direct Sponsor Income - 10%
       const directIncome = packageAmount * 0.1;
       sponsor.wallet_balance += directIncome;
       sponsor.direct_sponsor_income += directIncome;
@@ -554,59 +536,96 @@ userRouter.post("/activate", async (req, res) => {
         type: "Direct",
         amount: directIncome,
         from_user: user._id,
+        created_at: new Date(),
       });
       sponsorChanged = true;
 
-      // 7. Fighter Income (5%)
-      if (sponsor.left_user && sponsor.right_user) {
-        const fighterIncome = packageAmount * 0.05;
-        sponsor.wallet_balance += fighterIncome;
-        sponsor.fighter_income += fighterIncome;
-        sponsor.income_logs.push({
-          type: "Fighter",
-          amount: fighterIncome,
-          from_user: user.other_sponsor_id,
-        });
-        sponsorChanged = true;
+      // B. Fighter Income - 5%
+      // if (sponsor.left_user && sponsor.right_user) {
+      //   const fighterIncome = packageAmount * 0.05;
+      //   sponsor.wallet_balance += fighterIncome;
+      //   sponsor.fighter_income += fighterIncome;
+      //   sponsor.income_logs.push({
+      //     type: "Fighter",
+      //     amount: fighterIncome,
+      //     from_user: user._id,
+      //     created_at: new Date(),
+      //   });
+      //   sponsorChanged = true;
+      // }
+
+      // ✅ Apply Fighter Income Now if `fighter_user_id` Provided
+      if (Other_user.fighter_user_id) {
+        const fighter = await User.findOne({
+          username: Other_user.fighter_user_id,
+        }).session(session);
+        if (fighter) {
+          const fighterIncome = packageAmount * 0.05;
+          fighter.wallet_balance =
+            parseInt(fighter.wallet_balance ?? 0) + parseInt(fighterIncome);
+          fighter.fighter_income =
+            parseInt(fighter.fighter_income ?? 0) + parseInt(fighterIncome);
+
+          console.log(fighter);
+
+          fighter.income_logs.push({
+            type: "Fighter",
+            amount: fighterIncome,
+            from_user: user._id,
+          });
+
+          await fighter.save({ session });
+        }
       }
 
-      // 8. Update BV
+      // C. Add BV to left or right leg
       const side =
         String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
-      sponsor[side] += bv;
+      sponsor[side] = (sponsor[side] || 0) + parseFloat(bv);
       sponsorChanged = true;
 
-      // 9. Matching Income (30% of min BV)
+      // D. Matching Income - 30% of minimum BV side
       const pairBV = Math.min(sponsor.left_bv, sponsor.right_bv);
       if (pairBV > 0) {
-        const matchIncome = pairBV * 0.3;
+        const incomePerBV = 10; // 1 BV = ₹10
+        const matchIncome = pairBV * incomePerBV * 0.3;
+
         sponsor.wallet_balance += matchIncome;
         sponsor.matching_income += matchIncome;
         sponsor.left_bv -= pairBV;
         sponsor.right_bv -= pairBV;
+
         sponsor.income_logs.push({
           type: "Matching",
           amount: matchIncome,
-          from_user: sponsor._id, // from self
+          from_user: user._id,
+          created_at: new Date(),
         });
+
         sponsorChanged = true;
       }
 
-      if (sponsorChanged) await sponsor.save();
+      // Save if sponsor got any updates
+      if (sponsorChanged) await sponsor.save({ session });
     }
+
+    user.wallet_balance = user.wallet_balance - packageAmount;
+
+    await user.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
 
     return res.json({
       success: true,
-      message: "User activated and incomes distributed",
+      message: "User activated and incomes distributed successfully.",
     });
   } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+
     console.error("Activation Error:", err);
-    return await handleTransactionAbort(
-      session,
-      res,
-      400,
-      `Activation Error:", ${err}`
-    );
+    return res.status(500).json({ error: `Activation Error: ${err.message}` });
   }
 });
 
@@ -767,65 +786,52 @@ userRouter.put("/updateNominee", async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ****************************** Request ******************************************
 
-
-
-
 // Fund Request Route
-userRouter.post("/fundRequest", upload.single("screenshot"), async (req, res) => {
-  try {
-    const { amount } = req.body;
-    const userId = req.user.id;
+userRouter.post(
+  "/fundRequest",
+  upload.single("screenshot"),
+  async (req, res) => {
+    try {
+      const { amount } = req.body;
+      const userId = req.user.id;
 
-    if (!amount || !req.file) {
-      return res.status(400).json({ message: "Amount and screenshot image are required." });
+      if (!amount || !req.file) {
+        return res
+          .status(400)
+          .json({ message: "Amount and screenshot image are required." });
+      }
+
+      const filename = req.file.filename;
+      const screenshotUrl = `${req.protocol}://${req.headers.host}/uploads/kyc/${filename}`;
+
+      const newRequest = new UserWalletRequest({
+        user: userId,
+        amount,
+        screenshot: screenshotUrl, // store full absolute URL
+      });
+
+      await newRequest.save();
+
+      res.status(201).json({
+        message: "Wallet request submitted successfully.",
+        request: newRequest,
+      });
+    } catch (error) {
+      console.error("Wallet request error:", error);
+      res.status(500).json({ message: "Server error" });
     }
-
-    const filename = req.file.filename;
-    const screenshotUrl = `${req.protocol}://${req.headers.host}/uploads/kyc/${filename}`;
-
-    const newRequest = new UserWalletRequest({
-      user: userId,
-      amount,
-      screenshot: screenshotUrl, // store full absolute URL
-    });
-
-    await newRequest.save();
-
-    res.status(201).json({
-      message: "Wallet request submitted successfully.",
-      request: newRequest,
-    });
-  } catch (error) {
-    console.error("Wallet request error:", error);
-    res.status(500).json({ message: "Server error" });
   }
-});
-
-
-
+);
 
 userRouter.get("/get-all-fundRequest", async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const requests = await UserWalletRequest.find({ user: userId }).sort({ requested_at: -1 });
+    const requests = await UserWalletRequest.find({ user: userId }).sort({
+      requested_at: -1,
+    });
 
     const formattedRequests = requests.map((req) => {
       let screenshotUrl = req.screenshot;
@@ -848,11 +854,5 @@ userRouter.get("/get-all-fundRequest", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
-
-
-
-
-
 
 module.exports = userRouter;
