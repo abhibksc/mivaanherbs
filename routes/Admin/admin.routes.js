@@ -126,6 +126,41 @@ router.get("/allusers", async (req, res) => {
 });
 
 
+// ✅ Update user by ID
+router.put("/users/:id", authMiddleware, async (req, res) => {
+  try {
+    const updates = req.body;
+    const user = await User.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+      runValidators: true,
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    res.json({ success: true, data: user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
+router.get("/users/:id", authMiddleware, async (req, res) => {
+
+  console.log(req.params.id);
+  
+  try {
+    const user = await User.findById(req.params.id).lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    res.json({ success: true, data: user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
+
 router.post("/activate", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
