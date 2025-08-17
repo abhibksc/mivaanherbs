@@ -191,6 +191,12 @@ userRouter.get("/dashboard-data", async (req, res) => {
       total_rewards: 1000, // Dummy for now
       total_repurchase: 700, // Dummy for now
       total_referrals: user.my_mlm_network?.length || 0,
+      total_Activate: user.my_mlm_network?.length || 0,
+      total_InActivate: user.my_mlm_network?.length || 0,
+      data1 : user,
+      data2 : totalWithdrawal,
+
+
     };
 
     res.json(dashboardData);

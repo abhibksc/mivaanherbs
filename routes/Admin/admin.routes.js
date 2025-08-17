@@ -19,33 +19,47 @@ const txnCtrl = require("../../controllers/admin.controller.js");
 
 const { checkRole } = require("../../middleware/roles.middleware.js");
 const UserWalletRequest = require("../../models/Users/UserWalletRequest.js");
+const UserWalletTransaction = require("../../models/Users/UserWalletTransaction.js");
 router.use(authMiddleware, checkRole("admin")); // Protect entire admin route
 
 router.get("/profile", getAdminProfile);
 router.get("/order", getAllOrders);
 router.get("/allusers", async (req, res) => {
   try {
-    // Fetch users
+    // 1. Fetch users (basic details)
     const users = await User.find(
       {},
       {
         username: 1,
+        deactivate_reason : 1,
+        is_Deactive : 1,
+        full_name: 1,
         email: 1,
         mobile: 1,
         country_id: 1,
         crt_date: 1,
         is_active: 1,
         wallet_balance: 1,
+        referred_by: 1,
+        Activated_with: 1,
+        direct_sponsor_income: 1,
+        fighter_income: 1,
+        matching_income: 1,
+        income_logs: 1,
+        my_mlm_network: 1,
       }
-    ).sort({ crt_date: -1 });
+    )
+      .populate("referred_by", "username full_name email") // show sponsor details
+      .sort({ crt_date: -1 });
 
-    // Fetch all successful transactions, sorted by creation date
+    // 2. Fetch all successful transactions
     const transactions = await Transaction.find({ status: "Success" }).sort({
       created_at: 1,
     });
 
-    // Map user_id => [transactions], and first transaction
+    // Maps for quick lookup
     const firstTransactionMap = {};
+    const userTransactions = {};
     const userPackageSums = {};
     let totalPackageSell = 0;
 
@@ -53,37 +67,56 @@ router.get("/allusers", async (req, res) => {
       const userId = txn.user_id.toString();
       const amount = parseFloat(txn.package_amount?.toString() || "0");
 
-      // Sum all packages
+      // Store transactions by user
+      if (!userTransactions[userId]) userTransactions[userId] = [];
+      userTransactions[userId].push(txn);
+
+      // Sum packages
       userPackageSums[userId] = (userPackageSums[userId] || 0) + amount;
       totalPackageSell += amount;
 
-      // Store the first (oldest) transaction only
+      // Store first (oldest) transaction
       if (!firstTransactionMap[userId]) {
-        firstTransactionMap[userId] = amount;
+        firstTransactionMap[userId] = txn;
       }
     }
+    console.log(users);
+    
 
-    // Prepare response data
+    // 3. Prepare response data
     const userData = users.map((user) => {
       const userId = user._id.toString();
       return {
-        userId: userId,
+        userId,
+        deactivate_reason : user.deactivate_reason,
+        is_Deactive : user.is_Deactive,
         username: user.username,
+        full_name: user.full_name,
         email: user.email,
-        isVarified_email: false,
-        isVarified_mobile: false,
         mobile: user.mobile,
         country: user.country_id,
         joined_at: user.crt_date,
         active: user.is_active,
         balance: user.wallet_balance,
-        activated_amount: firstTransactionMap[userId] || 0,
+        referred_by: user.referred_by || null, // populated object
+        activated_with: user.Activated_with || null,
+        activated_amount: userPackageSums[userId] || 0,
+        first_transaction: firstTransactionMap[userId] || null,
+        transactions: userTransactions[userId] || [],
+        incomes: {
+          direct: user.direct_sponsor_income,
+          fighter: user.fighter_income,
+          matching: user.matching_income,
+        },
+        income_logs: user.income_logs || [],
+        my_mlm_network: user.my_mlm_network || [],
       };
     });
 
+    // 4. Final response
     return res.json({
       total_package_sell: totalPackageSell,
-      withdrawals: 0,
+      withdrawals: 0, // (you can later add Withdrawal schema here)
       data: userData,
     });
   } catch (err) {
@@ -92,56 +125,84 @@ router.get("/allusers", async (req, res) => {
   }
 });
 
+
 router.post("/activate", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
+
   try {
-    const { username } = req.body;
+    const {MyuserId, Other_userId, quantity, name, mrp, dp, bv } = req.body;
 
-    // 1. Fetch user
-    const user = await User.findOne({ username });
+    // 1. Fetch current user (activator)
+    
+    const user = await User.findById(MyuserId).session(session);
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (user.is_active)
-      return res.status(404).json({ error: "Id Already Activated!" });
+    if (user.wallet_balance <= 0) return res.status(400).json({ error: "Wallet is empty" });
 
-    // 2. fetch transaction
+    // 2. Fetch user to activate
 
-    const user_transaction = await Transaction.findOne({ user_id: user._id });
-    if (!user_transaction)
-      return res.status(404).json({
+    const Other_user = await User.findOne({ _id: Other_userId }).session(
+      session
+    );
+    if (!Other_user)
+      return res.status(404).json({ error: "User not found for activation!" });
+    if (Other_user.is_active)
+      return res.status(400).json({ error: "User is already activated!" });
+
+    // 3. Calculate package total
+    const packageAmount = quantity * parseFloat(dp);
+
+    if (user.wallet_balance < packageAmount) {
+      return res.status(400).json({
         error:
-          "No Transaction Found.. Please Purchase any Item then Activate Account",
+          "Insufficient wallet balance. Please add funds to your wallet to complete the purchase.",
       });
+    }
 
-    // 2. Activate user
-    user.is_active = true;
-    const packageAmount = user.package;
-    await user.save();
-    const dp = Math.round(packageAmount * 0.8017);
-    const bv = parseFloat((packageAmount * 0.0079).toFixed(2));
+    // 4. Activate user and store product info
+    Other_user.is_active = true;
+    Other_user.Activated_with = {
+      product_name: name,
+      product_mrp: parseFloat(mrp),
+      product_dp: parseFloat(dp),
+      product_bv: parseFloat(bv),
+      total_activated_amount: packageAmount,
+    };
 
-    // 3. updat transaction table where user_transaction._id
-    await Transaction.updateOne(
-      { user_id: user._id }, // Filter
-      {
-        $set: {
-          dp,
-          bv,
+    await Other_user.save({ session });
+
+    // 5. Update matching Transaction for this user
+    const generatedPaymentRef = `TXN_${Date.now()}_${Math.floor(
+      Math.random() * 10000
+    )}`;
+    // OR use UUID: const generatedPaymentRef = uuidv4();
+
+    const transaction = await Transaction.create(
+      [
+        {
+          user_id: Other_user._id,
+          payment_ref: generatedPaymentRef,
+          dp: mongoose.Types.Decimal128.fromString(String(dp)),
+          bv: mongoose.Types.Decimal128.fromString(String(bv)),
+          package_amount: mongoose.Types.Decimal128.fromString(
+            String(packageAmount)
+          ),
           status: "Success",
         },
-      }
+      ],
+      { session }
     );
 
-    // 4. Find sponsor
+    // 6. Find Sponsor
     const sponsor = await User.findOne({
-      my_sponsor_id: user.other_sponsor_id,
-    });
+      MYsponsor_id: user.other_sponsor_id,
+    }).session(session);
 
     if (sponsor) {
       let sponsorChanged = false;
-      d;
-      // 6. Direct Income (10%)
+
+      // A. Direct Sponsor Income - 10%
       const directIncome = packageAmount * 0.1;
       sponsor.wallet_balance += directIncome;
       sponsor.direct_sponsor_income += directIncome;
@@ -149,40 +210,31 @@ router.post("/activate", async (req, res) => {
         type: "Direct",
         amount: directIncome,
         from_user: user._id,
+        created_at: new Date(),
       });
       sponsorChanged = true;
 
-      // 8. Update BV
-      const side =
-        String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
-      sponsor[side] += bv;
-      sponsorChanged = true;
-
-      // 9. Matching Income (30% of min BV)
-      const pairBV = Math.min(sponsor.left_bv, sponsor.right_bv);
-      if (pairBV > 0) {
-        const matchIncome = pairBV * 0.3;
-        sponsor.wallet_balance += matchIncome;
-        sponsor.matching_income += matchIncome;
-        sponsor.left_bv -= pairBV;
-        sponsor.right_bv -= pairBV;
-        sponsor.income_logs.push({
-          type: "Matching",
-          amount: matchIncome,
-          from_user: sponsor._id, // from self
-        });
-        sponsorChanged = true;
-      }
-
-      if (sponsorChanged) await sponsor.save();
+      // B. Fighter Income - 5%
+      // if (sponsor.left_user && sponsor.right_user) {
+      //   const fighterIncome = packageAmount * 0.05;
+      //   sponsor.wallet_balance += fighterIncome;
+      //   sponsor.fighter_income += fighterIncome;
+      //   sponsor.income_logs.push({
+      //     type: "Fighter",
+      //     amount: fighterIncome,
+      //     from_user: user._id,
+      //     created_at: new Date(),
+      //   });
+      //   sponsorChanged = true;
+      // }
 
       // ✅ Apply Fighter Income Now if `fighter_user_id` Provided
-      if (user.fighter_user_id) {
+      if (Other_user.fighter_user_id) {
         const fighter = await User.findOne({
-          username: user.fighter_user_id,
+          username: Other_user.fighter_user_id,
         }).session(session);
         if (fighter) {
-          const fighterIncome = (newUser.package || 0) * 0.05;
+          const fighterIncome = packageAmount * 0.05;
           fighter.wallet_balance =
             parseInt(fighter.wallet_balance ?? 0) + parseInt(fighterIncome);
           fighter.fighter_income =
@@ -193,28 +245,135 @@ router.post("/activate", async (req, res) => {
           fighter.income_logs.push({
             type: "Fighter",
             amount: fighterIncome,
-            from_user: newUser._id,
+            from_user: user._id,
           });
 
           await fighter.save({ session });
         }
       }
+
+      // C. Add BV to left or right leg
+      const side =
+        String(sponsor.left_user) === String(user._id) ? "left_bv" : "right_bv";
+      sponsor[side] = (sponsor[side] || 0) + parseFloat(bv);
+      sponsorChanged = true;
+
+      // D. Matching Income - 30% of minimum BV side
+      const pairBV = Math.min(sponsor.left_bv, sponsor.right_bv);
+      if (pairBV > 0) {
+        const incomePerBV = 10; // 1 BV = ₹10
+        const matchIncome = pairBV * incomePerBV * 0.3;
+
+        sponsor.wallet_balance += matchIncome;
+        sponsor.matching_income += matchIncome;
+        sponsor.left_bv -= pairBV;
+        sponsor.right_bv -= pairBV;
+
+        sponsor.income_logs.push({
+          type: "Matching",
+          amount: matchIncome,
+          from_user: user._id,
+          created_at: new Date(),
+        });
+
+        sponsorChanged = true;
+      }
+
+      // Save if sponsor got any updates
+      if (sponsorChanged) await sponsor.save({ session });
     }
+
+    user.wallet_balance = user.wallet_balance - packageAmount;
+
+    await user.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
 
     return res.json({
       success: true,
-      message: "User activated and incomes distributed",
+      message: "User activated and incomes distributed successfully.",
     });
   } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+
     console.error("Activation Error:", err);
-    return await handleTransactionAbort(
-      session,
-      res,
-      400,
-      `Activation Error:", ${err}`
-    );
+    return res.status(500).json({ error: `Activation Error: ${err.message}` });
   }
 });
+
+
+router.post("/deactivate", async (req, res) => {
+  try {
+    const { userId, reason } = req.body;
+
+    if (!userId || !reason) {
+      return res.status(400).json({ message: "User ID and reason are required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+         if (!user.is_active) {
+      return res.status(400).json({ message: "ID is Not Activated yet!! Please Purchase Product to Activate ID" });
+    }
+
+
+    if (user.is_Deactive) {
+      return res.status(400).json({ message: "User already deactivated" });
+    }
+
+
+    user.is_Deactive = true;
+    user.deactivate_reason = reason;
+    user.is_active = false; // optional: mark inactive
+    await user.save();
+
+    return res.json({ success: true, message: "User deactivated successfully" });
+  } catch (error) {
+    console.error("Deactivate error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
+router.post("/resume", async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    
+         if (!user.is_active) {
+      return res.status(400).json({ message: "ID is Not Activated yet!! Please Purchase Product to Activate ID" });
+    }
+
+    if (!user.is_Deactive) {
+      return res.status(400).json({ message: "User is not deactivated" });
+    }
+
+    user.is_Deactive = false;
+    user.deactivate_reason = "";
+    user.is_active = true;
+    await user.save();
+
+    return res.json({ success: true, message: "User resumed successfully" });
+  } catch (error) {
+    console.error("Resume error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
+
+
+
 
 router.post("/generate-pincode", async (req, res) => {
   const { username, pincode, status } = req.body;
@@ -380,6 +539,57 @@ router.patch("/update-fundRequest/:id", async (req, res) => {
     return res.status(500).json({ message: "Server error", error: error.message });
   }
 });
+
+
+
+router.post("/addbalance", async (req, res) => {
+  try {
+    const { userId, amount, note = "Admin balance top-up" } = req.body;
+
+    if (!userId || !amount) {
+      return res.status(400).json({ message: "User ID and amount are required" });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ message: "Amount must be greater than 0" });
+    }
+
+    // 1. Find user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // 2. Add balance
+    user.wallet_balance = parseFloat(user.wallet_balance || 0) + parseFloat(amount);
+
+    // 3. Save user
+    await user.save();
+
+    // 4. Create wallet transaction record
+    const transaction = await UserWalletTransaction.create({
+      user_id: user._id,
+      type: "AdminCredit",
+      amount: amount, // always positive here
+      note,
+      created_at: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `₹${amount} added to ${user.username}'s wallet`,
+      balance: user.wallet_balance,
+      transaction,
+    });
+  } catch (error) {
+    console.error("Add balance error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add balance",
+      error: error.message,
+    });
+  }
+});
+
+
 
 
 

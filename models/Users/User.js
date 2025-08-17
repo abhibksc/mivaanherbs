@@ -94,6 +94,8 @@ const userSchema = new mongoose.Schema({
   Activated_with: activatedWithSchema,
 
   is_active: { type: Boolean, default: false },
+  is_Deactive: { type: Boolean, default: false },
+  deactivate_reason : { type: String }, 
   level: { type: Number, default: 0 },
   crt_by: { type: String },
   crt_date: { type: Date, default: Date.now },
